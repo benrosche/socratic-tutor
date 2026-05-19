@@ -2,7 +2,7 @@
 
 A VS Code chat participant that helps your students work through programming exercises **without giving them the answer**. The tutor fetches the reference solution for the student's current task from a GitHub repository you control, but is instructed to respond only with diagnoses, guiding questions, and small scaffolds — never the full solution.
 
-For the motivation behind this project and a full walkthrough of how to adopt it in your own course, see [`tutorial.md`](tutorial.md).
+For the motivation behind this project and a full walkthrough of how to adopt it in your own course, see [`TUTORIAL.md`](TUTORIAL.md).
 
 ---
 
@@ -61,6 +61,8 @@ Open Settings (`Ctrl+,`), search for **Socratic Tutor**, and fill in:
 
 ## Solution file format
 
+A ready-to-edit starter notebook lives at [`templates/solution-template.qmd`](templates/solution-template.qmd). Copy it into your solutions repo, rename it to match your task-ID prefix (e.g. `r-lab.qmd`), and replace the two example exercises with your own.
+
 The tutor expects solution notebooks to follow this convention:
 
 - One file per "notebook" or "lesson", named after the prefix you use in task IDs. For task ID `lesson-1`, the file is `lesson.qmd`. For task ID `4_F_ERGM-1`, the file is `4_F_ERGM.qmd`. (Everything after the last `-` is treated as the task number within the notebook.)
@@ -93,7 +95,7 @@ The tutor extracts everything between the opening `:::` of that callout and its 
 
 ## How students use it
 
-Students don't need to know about GitHub tokens or settings — they just install the extension and chat with `@tutor`. To indicate which task they're on, they have three options:
+Students don't need to know about GitHub tokens or settings — they just install the extension and chat with `@tutor`. To indicate which task they're on, they have three options (the `#| task:` directive belongs only in the student's working notebook; in the solution file, tasks are identified by the `{taskId}` in the heading):
 
 1. A Quarto cell directive at the top of the file: `#| task: lesson-1`
 2. Highlighting any line that contains that marker
@@ -118,7 +120,7 @@ Then in the chat sidebar:
 
 ## Customizing the tutor for your course
 
-The tutoring style — escalation policy, scaffolding rules, output constraints — lives in a single string constant `TUTOR_SYSTEM_PROMPT` in [src/extension.ts](src/extension.ts). The wording is intentionally generic. To adapt it for your domain (e.g., specific language idioms, course-specific vocabulary), fork this repo, edit that constant, run `vsce package`, and distribute the new `.vsix` to your students.
+The tutoring style — escalation policy, scaffolding rules, output constraints — lives in a plain markdown file at [src/tutor-system-prompt.md](src/tutor-system-prompt.md), with `${fileName}`, `${taskId}`, and `${solution}` placeholders that get substituted at request time. The wording is intentionally generic. To adapt it for your domain (e.g., specific language idioms, course-specific vocabulary), fork this repo, edit that file, run `vsce package`, and distribute the new `.vsix` to your students.
 
 ---
 

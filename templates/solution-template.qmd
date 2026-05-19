@@ -1,0 +1,108 @@
+---
+title: "R Lab: A template notebook for the Socratic Tutor"
+format: html
+author: Your Name
+date: last-modified
+execute:
+  echo: true
+toc: true
+---
+
+```{r}
+#| label: load-packages
+#| include: false
+#| task: r-lab
+
+# Any setup the student needs goes here.
+# The `#| task:` directive at the top tells the tutor which notebook this is.
+```
+
+# Introduction
+
+This file is a **template** for instructors adopting the Socratic Tutor. It shows
+the structure the extension expects:
+
+- A `#| task: <notebook-id>` marker at the top of the file (here, `r-lab`).
+- One section per exercise, with a heading that contains the task ID in
+  `{curly-braces}` (e.g. `{r-lab-1}`).
+- A code chunk for the student, also tagged with `#| task: <exercise-id>`.
+- A Quarto callout titled `"Solution"` containing the reference solution. The
+  tutor reads this callout but never reveals it verbatim to the student.
+
+Copy this file into your `notebook-solutions/` folder, rename it to match your
+course (e.g. `r-lab.qmd`), and replace the two example exercises below with
+your own.
+
+# Sum the even numbers in a vector `{r-lab-1}`
+
+**To-do:** Write a function `sum_even(x)` that returns the sum of all even
+numbers in a numeric vector `x`. For example, `sum_even(1:6)` should return `12`.
+
+A few hints:
+
+- The modulo operator in R is `%%`.
+- You can index a vector with a logical condition.
+
+```{r}
+#| label: sum-even
+#| task: r-lab-1
+
+# Your code here
+
+```
+
+::: {.callout-caution collapse="true" title="Solution"}
+
+```{r}
+#| label: sum-even-solution
+#| task: r-lab-1
+#| eval: false
+
+sum_even <- function(x) {
+  sum(x[x %% 2 == 0])
+}
+
+sum_even(1:6)  # 12
+```
+
+**Key points:**
+
+- `x %% 2 == 0` produces a logical vector marking even entries.
+- `x[<logical>]` keeps only the entries where the condition is `TRUE`.
+- `sum()` then adds them up.
+:::
+
+# Count words in a string `{r-lab-2}`
+
+**To-do:** Write a function `count_words(s)` that returns the number of words in
+a character string `s`. Treat any run of whitespace as a single separator. For
+example, `count_words("hello  world")` should return `2`.
+
+```{r}
+#| label: count-words
+#| task: r-lab-2
+
+# Your code here
+
+```
+
+::: {.callout-caution collapse="true" title="Solution"}
+
+```{r}
+#| label: count-words-solution
+#| task: r-lab-2
+#| eval: false
+
+count_words <- function(s) {
+  length(strsplit(trimws(s), "\\s+")[[1]])
+}
+
+count_words("hello  world")  # 2
+```
+
+**Key points:**
+
+- `trimws()` removes leading/trailing whitespace so they don't produce empty tokens.
+- `strsplit(s, "\\s+")` splits on one-or-more whitespace characters.
+- `strsplit()` returns a list; `[[1]]` extracts the first (and only) element.
+:::

@@ -40,7 +40,7 @@ The whole extension is around 350 lines of TypeScript. The interesting parts:
 - **Task ID detection.** The extension scans the active editor for a marker matching `#| task: <id>` (Quarto's cell-attribute syntax), or accepts a `/task <id>` chat command. The ID has two parts separated by the last `-`: a notebook prefix (e.g. `lesson`) and a task number (e.g. `1`).
 - **Solution lookup.** The notebook prefix tells the extension which file to fetch from your solutions repo — e.g. `lesson.qmd`. The full file is downloaded via the GitHub Contents API, cached per-session, and parsed.
 - **Solution extraction.** Inside the notebook, the extension finds the heading whose attribute block contains `{lesson-1}`, then scans forward for the next Quarto callout titled `"Solution"`: `::: {.callout-tip title="Solution"} ... :::`. Everything inside that callout is pulled out (respecting nested fenced divs) and used as the reference solution.
-- **The system prompt.** This is the heart of the pedagogy. It instructs the model to diagnose before answering, prefer questions over scaffolds and scaffolds over snippets, escalate over multiple turns, never reproduce the solution verbatim, and never claim correctness it can't verify. The full prompt is ~80 lines and lives in `src/extension.ts`; instructors are encouraged to edit it for their own course's tone.
+- **The system prompt.** This is the heart of the pedagogy. It instructs the model to diagnose before answering, prefer questions over scaffolds and scaffolds over snippets, escalate over multiple turns, never reproduce the solution verbatim, and never claim correctness it can't verify. The full prompt lives in [`src/tutor-system-prompt.md`](src/tutor-system-prompt.md) and is loaded once when the extension activates; instructors are encouraged to edit it for their own course's tone.
 
 ## Setting it up for your course
 
@@ -48,16 +48,18 @@ This is the part that turns the rest into something you can actually use.
 
 ### Step 1 — Prepare your solutions repo
 
-Create a private GitHub repository, e.g. `your-username/course-solutions`. Inside it, make a folder (the default name is `notebook-solutions`) and add one Quarto file per "lesson" or "notebook" in your course. Each file should look like this:
+Create a private GitHub repository, e.g. `your-username/course-solutions`. Inside it, make a folder (the default name is `notebook-solutions`) and add one Quarto file per "lesson" or "notebook" in your course.
+
+A working starter file is included in this repo at [`templates/solution-template.qmd`](templates/solution-template.qmd) — copy it into your solutions repo, rename it (e.g. `lesson-1.qmd`), and replace the two example exercises with your own. The minimal structure it demonstrates is:
 
 ````markdown
 # Lesson 1: Loops and Conditionals
 
-## Task 1 {#sec-lesson-1 .task}
+## Task 1 `{lesson-1-1}`
 
 Write a function that sums every other element of a list.
 
-::: {.callout-tip title="Solution"}
+::: {.callout-caution collapse="true" title="Solution"}
 
 ```r
 sum_alternate <- function(x) {
@@ -65,14 +67,7 @@ sum_alternate <- function(x) {
 }
 ```
 
-The key idea is that `seq(1, n, by = 2)` produces an index vector
-that picks out every other element. `[` then indexes by position.
-
 :::
-
-## Task 2 {#sec-lesson-2 .task}
-
-...
 ````
 
 Two non-obvious requirements:
@@ -116,7 +111,7 @@ Verify by opening a chat with `@tutor` and asking `@tutor test connection`. You 
 
 ### Step 5 — Tell your students how to mark tasks
 
-In their working notebooks, students mark the current task with a Quarto cell directive at the top of a code chunk:
+In their working notebooks — not the solution file, where the tutor identifies tasks by the `{taskId}` in the heading — students mark the current task with a Quarto cell directive at the top of a code chunk:
 
 ```r
 #| task: lesson-1
@@ -132,7 +127,7 @@ That is the whole setup.
 
 The default system prompt is intentionally generic — it talks about "programming exercises" and avoids any reference to specific languages or topics. For your course, you will almost certainly want to make it more specific: name the language, mention the libraries students should reach for first, swap in Socratic example questions that use your domain's vocabulary.
 
-The prompt is a single template literal called `TUTOR_SYSTEM_PROMPT` in [`src/extension.ts`](src/extension.ts). Edit it, rebuild the `.vsix` with `npx vsce package`, and distribute the new version. There is no separate configuration for the prompt because, in my experience, getting it right for a course requires iterating on real student interactions — a settings UI would only encourage shallow tweaks.
+The prompt is a plain markdown file at [`src/tutor-system-prompt.md`](src/tutor-system-prompt.md), with `${fileName}`, `${taskId}`, and `${solution}` placeholders that get substituted at request time. Edit the file, rebuild the `.vsix` with `npx vsce package`, and distribute the new version. There is no separate configuration for the prompt because, in my experience, getting it right for a course requires iterating on real student interactions — a settings UI would only encourage shallow tweaks.
 
 ## Honest caveats
 
