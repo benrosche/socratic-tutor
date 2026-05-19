@@ -3,6 +3,7 @@
 out/**
 node_modules/**
 src/**
+!src/tutor-system-prompt.md
 .gitignore
 .yarnrc
 webpack.config.js
