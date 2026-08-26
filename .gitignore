@@ -2,4 +2,7 @@ out
 dist
 node_modules
 .vscode-test/
-*.vsix
+
+# The packaged extension is tracked on purpose: students install it from the
+# Releases page, and keeping the built .vsix in the repo means the tag and the
+# artifact can never drift apart. Rebuild with `vsce package` before tagging.
