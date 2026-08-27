@@ -61,16 +61,24 @@ chat window does not reset it.
 ### 1. Deploy the server
 
 Create a Railway project, add a **Postgres** database, then add a service from this
-repository. **Leave the Root Directory setting blank** — the repo ships a
-[`Dockerfile`](Dockerfile) and [`railway.toml`](railway.toml) at the root, which
-locate the server under `server/` for you.
+repository and set:
 
-> If you previously set a Root Directory, clear it. Pointing it at `server` makes
-> Railway look for build config inside that folder instead, where there is none.
+| Setting | Value |
+|---|---|
+| Source Repo | your fork of this repo |
+| **Root Directory** | **`/server`** |
+| Branch | `master` |
+| Auto deploy | on |
 
-You can build the exact production image locally:
+Everything the deploy needs lives in `server/` — [`Dockerfile`](server/Dockerfile),
+[`railway.toml`](server/railway.toml), and the schema, which is embedded in
+`src/schema.ts` rather than shipped as a separate file. Nothing is referenced from
+outside that directory, so the build context is exactly the root directory you set.
+
+You can build the identical production image locally:
 
 ```bash
+cd server
 docker build -t tutor-server .
 docker run --rm -p 3000:3000 -e CLASS_TOKEN=dev \
   -e DATABASE_URL='postgresql://...?sslmode=disable' tutor-server
