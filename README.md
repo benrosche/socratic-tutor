@@ -109,6 +109,13 @@ bottom of the chat pane and ask away:
 
 Or use `/tutor <question>` for a one-off without switching modes.
 
+**If Positron asks whether to allow the tutor to use the course server**, choose
+**Always Allow**. Most course repos pre-approve this so you never see the prompt,
+but if yours doesn't, that prompt is what stands between you and useful hints: a
+tutor that has been denied keeps talking but can no longer see the reference
+solution, so its hints get noticeably vaguer with no error to explain why. If that
+happens, ask again and accept.
+
 The tutor gets more concrete the more you ask about the **same** task: the first
 answer is usually a question back, and by the third you get a small illustrative
 snippet. Opening a fresh chat does not reset that, so there is nothing to game. It
@@ -129,7 +136,7 @@ with no reference solution.
 | Tutor says it has no server connection, but `tutor_check()` is fine | You did not fully quit Positron. Close every window and reopen. |
 | `student_seen_by_server` is not your username | Re-run `install_tutor()` with the right username, or your history splits across two identities. |
 | Tutor does not know your exercise | The `#| task:` marker has no solution behind it. Tell your instructor — it is not something you can fix. |
-| Vague, generic hints | The tool call is probably failing. Ask `/tutor are you connected?`. |
+| Vague, generic hints | You may have denied the permission prompt. Ask again and choose *Allow* / *Always Allow*. Otherwise ask `/tutor are you connected?`. |
 
 ### What is recorded
 
@@ -266,19 +273,42 @@ That directory contains three things:
 - `agents/tutor.agent.md` — the **Tutor** entry in the agent dropdown. Its `tools:`
   list omits editing and code execution, so the tutor structurally cannot write into
   a student's file.
-- `settings.json` — a reference copy of the server entry. See the warning below.
+- `settings.json` — **permissions only**, no `mcpServers`. See below.
+
+The `settings.json` pre-approves the two tutor tools:
+
+```json
+{
+  "permission": {
+    "mcp__tutor__check_connection": { "*": "allow" },
+    "mcp__tutor__get_task_context": { "*": "allow" }
+  }
+}
+```
+
+Without it, the first time the tutor looks something up each student gets a
+permission prompt (*Allow* / *Allow for this Session* / *Always Allow*). A student
+who dismisses it keeps a tutor that talks but can no longer see the reference
+solution — vaguer hints, no error explaining why. Shipping the block removes the
+prompt entirely. The `tutor` in `mcp__tutor__…` is the server name `install.R`
+writes, so leave it alone.
 
 > The `tools:` names in the agent file should be reconciled with what your Positron
 > version offers. Run **Chat: New Custom Agent…** from the Command Palette to
 > generate a file listing the available tools, and adjust if they differ.
 
-> **A workspace `.posit/` does not configure the MCP server.** Posit Assistant picks
-> up **skills** from a workspace directory, but reads `mcpServers` only from the
-> user-level `<home>/.posit/assistant/settings.json`. A lab repo shipping
-> `settings.json` therefore produces a tutor that loads, tutors, and never connects
-> — with no error, because from the model's side the tools simply do not exist.
-> **Students must run `install.R`.** The copy in the lab repo is a reference for
-> you, not a working configuration for them.
+> **Never put `mcpServers` in the lab repo's `settings.json`.** A workspace
+> `.posit/assistant/settings.json` *does* configure `mcpServers` — and it **takes
+> precedence over** the user-level file that `install.R` writes. So a lab repo
+> carrying one silently overrides every student's working install with whatever the
+> repo says. If it uses a `{env:...}` placeholder, nothing expands it: the literal
+> string `{env:TUTOR_STUDENT}` is sent as the username, the server rejects it as
+> invalid, and Posit Assistant drops the server. The student sees a tutor that
+> loads, tutors, and has no tools — with no error pointing at the cause.
+>
+> Skills, agents and the `permission` block from a workspace `.posit/` are all fine
+> and are why the directory exists. Only the **server config** has to come from
+> `install.R`.
 
 ### 6. Hand out the token
 

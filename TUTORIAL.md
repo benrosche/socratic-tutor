@@ -125,12 +125,18 @@ It exits non-zero and names the task IDs, so you can gate a publish on it.
 Copy `templates/lab-repo/.posit/` into the repo your students clone, and
 `templates/lab-repo/README.md` too, filling in the disclosure section.
 
-This gives students the **skill** and the **Tutor agent**. It does not connect them
-to your server, and this is the one thing worth knowing before you spend an evening
-debugging it: Posit Assistant reads skills from a workspace directory, but reads
-`mcpServers` only from the user-level `<home>/.posit/assistant/settings.json`. Ship
-a `settings.json` in the lab repo and you get a tutor that loads, tutors, and never
-connects — silently, because from the model's side the tools simply do not exist.
+That gives students the **skill** and the **Tutor agent**. It deliberately contains
+no `settings.json`, and this is the one thing worth knowing before you spend an
+evening debugging it.
+
+A workspace `.posit/assistant/settings.json` *does* configure `mcpServers`, and it
+**takes precedence over** the user-level file the installer writes. So shipping one
+in the lab repo silently overrides every student's working install. If it uses an
+`{env:...}` placeholder for the token or username, nothing expands it — the literal
+string is sent as a header, the server rejects it, and Posit Assistant drops the
+server. What the student sees is a tutor that loads, tutors, and has no tools, with
+nothing anywhere pointing at the cause. Skills and agents from a workspace are fine;
+only the server config has to come from the installer.
 
 ### Step 4 — Point students at the installer
 
@@ -147,9 +153,16 @@ identity the server sees, and how many exercises are loaded — so a student kno
 immediately whether it worked, rather than discovering it mid-lab. `tutor_check()`
 re-runs that test later; `uninstall_tutor()` reverses it.
 
-Then tell them to mark their cursor's chunk with `#| task:` — or rather, don't:
-the markers are already in the worksheets you generated. Just tell them not to
-delete them.
+One thing you get for free by copying the template: its `settings.json` carries a
+`permission` block pre-approving the two tutor tools. Without it, the first lookup
+raises a permission prompt, and a student who dismisses it gets a tutor that keeps
+talking but can no longer see the reference solution — hints that are suddenly
+generic, with no error to explain why. Thirty students, thirty chances to click the
+wrong button, and the failure looks like your tutor is bad rather than un-permitted.
+That file is the only `settings.json` a lab repo should ever contain.
+
+The `#| task:` markers are already in the worksheets you generated. Just tell them
+not to delete them.
 
 No extension to install, and the class token never lives in the lab repo.
 

@@ -63,6 +63,12 @@ Then either:
   normally. Everything you ask stays in tutor mode.
 - Or type **`/tutor`** followed by your question, for a one-off.
 
+**If Positron asks whether to allow the tutor to use the course server**, choose
+**Always Allow**. This repo normally pre-approves it so you never see the prompt —
+but if you do, say yes. A tutor that has been denied keeps talking and can no
+longer see the reference solution, so the hints go vague with nothing explaining
+why. Ask again and accept if that happens.
+
 Good questions to ask it:
 
 > I'm not sure where to start on this one.
@@ -125,4 +131,4 @@ says which part is broken.
 | Tutor says no connection, and `tutor_check()` says "not installed yet" | Run `install_tutor(...)` — sourcing alone doesn't install. |
 | Wrong username reported | Re-run `install_tutor()` with the right one, then restart. |
 | Tutor doesn't know your exercise | The `#\| task:` marker has no solution behind it. Tell [INSTRUCTOR] — you can't fix this one. |
-| Vague, generic hints | It probably can't reach the server. Ask `/tutor are you connected?`. |
+| Vague, generic hints | You may have denied the permission prompt. Ask again and choose *Allow* / *Always Allow*. Otherwise ask `/tutor are you connected?`. |

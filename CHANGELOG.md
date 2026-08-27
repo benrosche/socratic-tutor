@@ -24,10 +24,34 @@ inspired by [Keep a Changelog](http://keepachangelog.com/).
   retyping the token. Verification needs `curl`; without it the install still
   completes and says the check was skipped.
 
+### Changed — lab-repo `settings.json`
+
+- **`mcpServers` removed from the lab-repo template; replaced with a `permission`
+  block.** A workspace `.posit/assistant/settings.json` configures `mcpServers` and
+  **takes precedence over** the user-level file `install.R` writes, so shipping one
+  silently overrode every student's working install. Its `{env:TUTOR_TOKEN}` /
+  `{env:TUTOR_STUDENT}` placeholders were never expanded by anything — the literal
+  string `{env:TUTOR_STUDENT}` went out as the username header, the server rejected
+  it as invalid, and Posit Assistant dropped the server. The symptom was a tutor
+  that loaded, tutored, and had no tools, with nothing indicating why.
+
+  The file now contains only a `permission` block pre-approving
+  `mcp__tutor__check_connection` and `mcp__tutor__get_task_context`. Without it each
+  student meets a permission prompt on the first lookup, and dismissing it yields a
+  tutor that still talks but cannot see the reference solution — vaguer hints, no
+  error. Skills, agents and permissions from a workspace `.posit/` all work; only
+  the server config has to come from `install.R`.
+
 ### Fixed
 
 - **Sourcing `install.R` printed nothing**, which reads exactly like a failed
   install — the file only defines functions. It now prints what to run next.
+- Documented the **permission prompt**: the first tutor lookup makes Positron ask
+  whether to allow the course server (*Allow* / *Allow for this Session* /
+  *Always Allow*). Dismissing it leaves a tutor that still talks but can no longer
+  see the reference solution — vaguer hints with no error to explain them. Covered
+  now in the README, the lab-repo template, the tutorial, and `install_tutor()`'s
+  own closing message.
 - **The dashboard could never connect.** `dashboard.qmd` passed the whole
   `postgresql://…` URL as `dbname` on the belief that libpq would expand it.
   RPostgres does not, so it was read as a literal database name and the connection

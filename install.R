@@ -273,7 +273,11 @@ install_tutor <- function(token,
     message("Done. One more step: quit Positron completely — every window, not a")
     message("reload — then reopen it and ask the tutor:\n")
     message("    /tutor are you connected?\n")
-    message("It should report the same course and username shown above.")
+    message("It should report the same course and username shown above.\n")
+    message("If Positron asks whether to allow the tutor to use the course server,")
+    message("choose \"Always Allow\". Most course repos pre-approve this, so you may")
+    message("never see it — but a tutor that has been denied keeps talking without")
+    message("the reference solution, and the hints go vague with no error to explain.")
   } else if (identical(result$ok, NA)) {
     message("Installed, but the connection was not tested (see above).")
     message("Restart Positron and ask:  /tutor are you connected?")
