@@ -1,8 +1,13 @@
-# Railway service config. Set the service's Root Directory to `server` so this
-# file is picked up.
+# Railway service config.
+#
+# IMPORTANT: set the service's Root Directory to `server`. Without it the builder
+# analyzes the repo root, finds no package.json, and fails with "could not
+# determine how to build the app" — this file is never even read.
 [build]
-builder = "NIXPACKS"
-buildCommand = "npm ci && npm run build"
+# `--include=dev` is deliberate: TypeScript is a devDependency and the build needs
+# it. Railway sets NODE_ENV=production, under which a plain `npm ci` skips dev
+# dependencies and `tsc` is then missing at build time.
+buildCommand = "npm ci --include=dev && npm run build"
 
 [deploy]
 startCommand = "npm start"

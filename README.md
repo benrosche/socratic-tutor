@@ -61,8 +61,14 @@ chat window does not reset it.
 ### 1. Deploy the server
 
 Create a Railway project, add a **Postgres** database, then add a service from this
-repository and set its **Root Directory** to `server`. Railway reads
-[`server/railway.toml`](server/railway.toml) for the build and health-check config.
+repository and set its **Root Directory** to `server` (Service → Settings → Root
+Directory).
+
+> Set the root directory *before* the first deploy. There is no `package.json` at
+> the repo root, so if it is unset the builder analyzes the whole repo and fails
+> with `Railpack could not determine how to build the app`. That error means the
+> root directory, not a problem with your code —
+> [`server/railway.toml`](server/railway.toml) is not read until it is set.
 
 Set these service variables:
 
