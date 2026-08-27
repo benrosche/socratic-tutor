@@ -1,8 +1,14 @@
-out
-dist
-node_modules
+node_modules/
+dist/
+out/
 .vscode-test/
 
-# The packaged extension is tracked on purpose: students install it from the
-# Releases page, and keeping the built .vsix in the repo means the tag and the
-# artifact can never drift apart. Rebuild with `vsce package` before tagging.
+# Local secrets: the class token, the database URL. Never commit these.
+.env
+.Renviron
+
+# The rendered dashboard embeds student usernames and question text. This is a
+# public repo — keep the output local.
+dashboard/dashboard.html
+dashboard/dashboard_files/
+dashboard/*_files/

@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "tutor": {
+      "type": "remote",
+      "url": "https://REPLACE-ME.up.railway.app/mcp",
+      "headers": {
+        "Authorization": "Bearer {env:TUTOR_TOKEN}",
+        "X-Tutor-Student": "{env:TUTOR_STUDENT}"
+      },
+      "enabled": true,
+      "timeout": 15000
+    }
+  }
+}

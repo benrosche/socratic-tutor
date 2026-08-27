@@ -1,126 +1,338 @@
-# Socratic Tutor for VS Code
+# Socratic Tutor
 
-A VS Code chat participant that helps your students work through programming exercises **without giving them the answer**. The tutor fetches the reference solution for the student's current task from a GitHub repository you control, but is instructed to respond only with diagnoses, guiding questions, and small scaffolds — never the full solution.
+A Socratic programming tutor for **Positron / Posit Assistant**. It helps students
+work through lab exercises **without giving them the answer**: it looks up the
+instructor's reference solution for whichever task the student is on, then replies
+only with diagnoses, guiding questions and small scaffolds.
 
-For the motivation behind this project and a full walkthrough of how to adopt it in your own course, see [`TUTORIAL.md`](TUTORIAL.md).
+Students get it by cloning the course lab repo. There is nothing to install, and no
+credentials of yours end up on their machines.
 
----
+For the motivation and a full walkthrough, see [`TUTORIAL.md`](TUTORIAL.md).
 
-## How it works at a glance
-
-1. A student writes code in a Quarto (`.qmd`) notebook with a task marker like `#| task: lesson-1`.
-2. They open the VS Code Chat sidebar and ask `@tutor` for help.
-3. The extension reads the task ID, fetches the corresponding solution notebook from your private GitHub repo, and extracts the `::: {.callout-tip title="Solution"}` block matching that task.
-4. The reference solution is passed to the underlying language model as context — together with a system prompt that forbids reproducing it verbatim. The model returns a hint, question, or partial scaffold.
-
-The tutor escalates over multiple turns: a guiding question first, then a stronger hint, then a small illustrative snippet — but never the complete working code.
-
----
-
-## Prerequisites
-
-- VS Code 1.108 or newer
-- An active GitHub Copilot subscription (the tutor uses the VS Code Language Model API, which Copilot provides)
-- A GitHub repository containing your reference solutions as Quarto notebooks (see *Solution file format* below)
-- A GitHub Personal Access Token (PAT) with **Contents: Read** on that repository
+> **Upgrading from v0.1?** The VS Code extension is archived at
+> [`legacy/vscode-extension/`](legacy/vscode-extension/). It still works in stock
+> VS Code + Copilot but **not** in Positron 2026.07 or later, which replaced
+> Positron Assistant with Posit Assistant and dropped the chat-participant surface
+> `@tutor` depended on.
 
 ---
 
-## Installation
+## How it works
 
-1. Download the latest `socratic-tutor-x.y.z.vsix` from the [Releases](https://github.com/benrosche/socratic-tutor-public/releases) page (or build it yourself with `vsce package`).
-2. In VS Code, open the Extensions view (`Ctrl+Shift+X`), click the `...` menu → **Install from VSIX...**, and pick the file.
-3. Reload the window.
+```
+socratic-tutor-solutions   (private repo)     .qmd notebooks with Solution callouts
+        │  npm run load  — run locally, on demand
+        ▼
+   Railway Postgres  ── tasks | events ──►  dashboard.qmd  (rendered locally)
+        ▲
+        │
+   Railway service: MCP server  ◄── https ──  Positron / Posit Assistant
+                                              tutor skill + Tutor agent
+```
+
+1. A student writes code in a Quarto notebook with a task marker like `#| task: r-lab-1`.
+2. They pick **Tutor** from the agent dropdown, or type `/tutor`, and ask for help.
+3. The skill reads the task marker and calls `get_task_context` on your MCP server.
+4. The server returns the reference solution as private model context, plus a
+   **persistent escalation level** — how many times *this student* has asked about
+   *this task*, counted across chat sessions.
+5. The tutor replies with a hint calibrated to that level, and the request is logged
+   so you can see where the class is stuck.
+
+The escalation ladder is the part client-side tooling cannot do: opening a fresh
+chat window does not reset it.
 
 ---
 
-## First-time setup
+## What you need
 
-After installing, you need to tell the tutor (a) where your solutions live and (b) how to authenticate.
+- Positron **2026.07 or later** (Posit Assistant). Earlier versions shipped the
+  deprecated Positron Assistant and behave differently.
+- A [Railway](https://railway.app) account — one small Node service plus a Postgres
+  add-on.
+- A private GitHub repository holding your reference solutions as Quarto notebooks.
+- R with `DBI`, `RPostgres`, `dplyr`, `ggplot2` if you want the dashboard.
 
-**Set the GitHub token (one-time, encrypted):**
+---
 
-1. Open the Command Palette (`Ctrl+Shift+P`).
-2. Run **Socratic Tutor: Set GitHub Token**.
-3. Paste your PAT. It is stored in the operating system's keychain via VS Code's `SecretStorage` API — not in `settings.json`, not in any file you might accidentally commit.
+## Instructor setup
 
-To rotate or remove the token, run **Socratic Tutor: Clear GitHub Token** and set it again.
+### 1. Deploy the server
 
-**Set the repository in Settings:**
+Create a Railway project, add a **Postgres** database, then add a service from this
+repository and set its **Root Directory** to `server`. Railway reads
+[`server/railway.toml`](server/railway.toml) for the build and health-check config.
 
-Open Settings (`Ctrl+,`), search for **Socratic Tutor**, and fill in:
+Set these service variables:
 
-| Setting | Example | Notes |
-|---|---|---|
-| `Repo Owner` | `your-github-username` | The owner of the solutions repo |
-| `Repo Name` | `course-solutions` | The repo containing solution notebooks |
-| `Solutions Path` | `notebook-solutions` | Subfolder inside the repo; leave empty if solutions live at the root |
-| `File Extension` | `qmd` | Without the dot. Defaults to `qmd` for Quarto. |
+| Variable | Value |
+|---|---|
+| `DATABASE_URL` | Reference the Postgres add-on (`${{Postgres.DATABASE_URL}}`) |
+| `CLASS_TOKEN` | A secret you generate — `openssl rand -hex 24`. This is what students receive. |
+| `RATE_LIMIT` | Optional, default `30` requests per window |
+| `RATE_WINDOW_MINUTES` | Optional, default `10` |
+
+Once deployed, check it:
+
+```bash
+curl https://<your-app>.up.railway.app/healthz
+# {"ok":true}
+```
+
+### 2. Create the tables
+
+From `server/`, with `DATABASE_URL` pointing at the **public** Railway connection
+string:
+
+```bash
+npm install
+npm run migrate
+```
+
+### 3. Load your solutions
+
+```bash
+npm run load -- ../../socratic-tutor-solutions/notebook-solutions
+```
+
+Add `--dry-run` to preview, and `--prune` to delete tasks that no longer exist in
+your notebooks. The loader prints every task it found, so a malformed callout shows
+up immediately rather than during a lab.
+
+Solutions live in Postgres, not in this repo and not in the deployment. **Content
+updates need no redeploy** — re-run `npm run load` and the change is live.
+
+### 4. Set up the lab repo
+
+Copy [`templates/lab-repo/.posit/`](templates/lab-repo/.posit/) into the repository
+your students clone, and edit `settings.json` to replace `REPLACE-ME` with your
+Railway URL.
+
+That directory contains three things:
+
+- `skills/tutor/SKILL.md` — the pedagogy. Invoked as `/tutor`.
+- `agents/tutor.agent.md` — the **Tutor** entry in the agent dropdown. Its `tools:`
+  list omits editing and code execution, so the tutor structurally cannot write into
+  a student's file.
+- `settings.json` — points Posit Assistant at your server.
+
+> The `tools:` names in the agent file should be reconciled with what your Positron
+> version offers. Run **Chat: New Custom Agent…** from the Command Palette to
+> generate a file listing the available tools, and adjust if they differ.
+
+### 5. Hand out the token
+
+Give students the `CLASS_TOKEN` value. One shared token for the class; rotate it
+each semester.
+
+---
+
+## Student setup
+
+Two lines in `~/.Renviron`, then restart Positron:
+
+```
+TUTOR_TOKEN=<the token your instructor gave you>
+TUTOR_STUDENT=<your GitHub username>
+```
+
+Then, in a notebook with a `#| task:` marker, select **Tutor** from the dropdown at
+the bottom of the chat pane and ask away:
+
+> My ERGM won't converge — what am I doing wrong?
+
+Or use `/tutor <question>` for a one-off without switching modes.
+
+### Checking the connection
+
+Ask the tutor directly:
+
+> `/tutor are you connected?`
+
+It calls `check_connection` and reports whether the server is reachable, **which
+username the server sees for you** (the fastest way to catch a typo'd
+`TUTOR_STUDENT`), how many tasks are loaded, and your request count in the current
+rate-limit window.
+
+If the tutor answers that it is running *without* a server connection, that is a
+real answer, not a failure to try: the skill instructs it to say so plainly rather
+than claim a connection it cannot verify. Hints still work — they are just based on
+your code alone, with no reference solution and no memory of how often you have
+asked.
 
 ---
 
 ## Solution file format
 
-A ready-to-edit starter notebook lives at [`templates/solution-template.qmd`](templates/solution-template.qmd). Copy it into your solutions repo, rename it to match your task-ID prefix (e.g. `r-lab.qmd`), and replace the two example exercises with your own.
+A ready-to-edit starter notebook lives at
+[`templates/solution-template.qmd`](templates/solution-template.qmd).
 
-The tutor expects solution notebooks to follow this convention:
-
-- One file per "notebook" or "lesson", named after the prefix you use in task IDs. For task ID `lesson-1`, the file is `lesson.qmd`. For task ID `4_F_ERGM-1`, the file is `4_F_ERGM.qmd`. (Everything after the last `-` is treated as the task number within the notebook.)
-- Inside each notebook, each task is a heading whose attributes contain the task ID in curly braces:
+- **One file per notebook or lesson.** Task IDs are `<notebook>-<n>`, so `r-lab-1`
+  and `r-lab-2` both belong to notebook `r-lab`.
+- **Each task is a heading containing its ID in bare braces:**
 
   ```markdown
-  ## Task 1 {#sec-lesson-1 .task title="..." }
+  # Sum the even numbers in a vector `{r-lab-1}`
   ```
 
-  Anywhere in that heading line, the bare `{lesson-1}` pattern must appear — the tutor matches on `\{taskId\}`.
+  The parser matches the literal `{r-lab-1}`, braces included. Quarto attribute
+  blocks such as `{#sec-r-lab-1 .task}` do **not** match — the v0.1 docs claimed
+  they did, and that was wrong.
 
-- Below each heading, place a Quarto callout titled `"Solution"`:
+- **Below the heading, a Quarto callout titled `"Solution"`:**
 
-  ```markdown
-  ::: {.callout-tip title="Solution"}
-
-  This is the reference solution the tutor will use as context.
-  It is never shown verbatim to the student.
+  ````markdown
+  ::: {.callout-caution collapse="true" title="Solution"}
 
   ```r
-  some_code_here()
+  sum_even <- function(x) sum(x[x %% 2 == 0])
   ```
 
+  **Key points:**
+
+  - `x %% 2 == 0` produces a logical vector marking even entries.
   :::
-  ```
+  ````
 
-The tutor extracts everything between the opening `:::` of that callout and its matching closing `:::`, respecting nested fenced divs.
+  Any callout type works; only `title="Solution"` matters. Everything between the
+  opening `:::` and its matching close is stored, respecting nested fenced divs.
 
 ---
 
-## How students use it
+## The dashboard
 
-Students don't need to know about GitHub tokens or settings — they just install the extension and chat with `@tutor`. To indicate which task they're on, they have three options (the `#| task:` directive belongs only in the student's working notebook; in the solution file, tasks are identified by the `{taskId}` in the heading):
+[`dashboard/dashboard.qmd`](dashboard/dashboard.qmd) renders locally against the
+database. Set `TUTOR_DATABASE_URL` in `~/.Renviron` to the Railway **public**
+connection string, then render it.
 
-1. A Quarto cell directive at the top of the file: `#| task: lesson-1`
-2. Highlighting any line that contains that marker
-3. Typing the slash command in the chat: `/task lesson-1`
+It answers:
 
-Then in the chat sidebar:
+- Which tasks generate the most requests.
+- **Which tasks leave students genuinely stuck** — the share reaching level 3+,
+  which separates a quick clarification from real confusion. This is the metric v0.1
+  could not produce.
+- Whether requests are concentrated in a few students or spread across the class.
+- When the work actually happens.
+- **What students typed, verbatim.**
 
-> `@tutor I'm getting an error when I run my function.`
+Two caveats worth keeping in mind. It measures *asking*, not struggling: a task with
+zero requests may mean everyone understood it or that nobody attempted it. And with
+a class of thirty across forty tasks, most cells are thin — treat the top few tasks
+as signal and the rest as noise.
+
+The rendered HTML contains student data and is gitignored. Keep it local.
+
+---
+
+## Data collected and disclosure
+
+**Every tutor request is logged.** The `events` table records:
+
+| Field | Contents |
+|---|---|
+| `student` | The GitHub username the student set in `TUTOR_STUDENT`, lowercased |
+| `task_id` | Which task they asked about |
+| `level` | How many times they have asked about that task |
+| `question` | **The text of their question, verbatim** |
+| `ts` | Timestamp |
+
+The instructor reads this data. Students must be told, in the syllabus and in the
+lab repo's own README, that their questions are recorded and by whom they are read.
+Decide and state a retention period — deleting the `events` rows at the end of each
+semester is a reasonable default.
+
+`TUTOR_STUDENT` is **self-reported and not authenticated**. It is a label for
+grouping requests, not proof of identity: a student can type someone else's username
+or change their own. Do not use this data for grading or for any decision that
+requires the identity to be reliable.
+
+---
+
+## Security model, honestly
+
+The class token is **shared across the class** and the payload contains the **full
+reference solution**. Together that means a determined student can call the API
+directly and extract every solution, and the token will eventually be shared.
+
+What limits this:
+
+- Per-student rate limiting (`RATE_LIMIT`, default 30 requests per 10 minutes).
+- Rotating `CLASS_TOKEN` each semester.
+- The dashboard — a student hitting forty tasks in two minutes is conspicuous.
+
+If that trade is wrong for your course, the cheapest hardening is to stop shipping
+working code in the payload: strip fenced code blocks in the loader and keep the
+prose. The template's `**Key points:**` sections are written for exactly this, and
+it is about ten lines in `server/src/load-solutions.ts`.
+
+Also note that MCP tool results may be inspectable in the chat transcript, depending
+on your Positron version. Check whether a student can expand a tool call and read
+its payload — if they can, the reference solution is one click away, which is weaker
+than v0.1, where it lived in an invisible prompt.
 
 ---
 
 ## Troubleshooting
 
-- **"GitHub Token Not Set"** — run *Socratic Tutor: Set GitHub Token* from the Command Palette.
-- **"Repository Not Configured"** — fill in `Repo Owner` and `Repo Name` in Settings.
-- **"Notebook Not Found"** — the task ID prefix doesn't match any file in your solutions folder. Check spelling and the `solutionsPath` setting.
-- **"Solution Not Found"** — the notebook exists, but no heading contains `{taskId}` or no `callout-* title="Solution"` block follows it.
-- **No response from the tutor** — ensure GitHub Copilot is installed, enabled, and signed in.
-- **Connection check** — ask `@tutor test connection` in chat to verify the extension can reach your repo.
+Start with `/tutor are you connected?` — it distinguishes "no server", "server up
+but no content loaded", and "server up but database down", which need different
+fixes.
+
+| Symptom | Cause |
+|---|---|
+| Tutor says it has no server connection | The MCP server isn't configured or reachable. Check `settings.json` has your real Railway URL, and that both env vars are set. |
+| `check_connection` reports 0 tasks loaded | Server and database are fine; you haven't run `npm run load` yet. |
+| `check_connection` reports `database: unreachable` | The service is up but `DATABASE_URL` is wrong or Postgres is down. |
+| `student_seen_by_server` is not your username | Typo in `TUTOR_STUDENT`. Fix it and restart Positron, or your history splits across two identities. |
+| `401 unauthorized` | `TUTOR_TOKEN` missing or wrong. Set it in `~/.Renviron` and restart Positron. |
+| `400 missing_student` | `TUTOR_STUDENT` not set. |
+| `400 invalid_student` | The value isn't a valid GitHub username (letters, digits, hyphens). |
+| Tutor says the task is unknown | The `#| task:` ID has no match. The error lists known IDs in that notebook. |
+| `/healthz` returns 503 | The service is up but cannot reach Postgres. Check `DATABASE_URL`. |
+| Tutor works but gives generic hints | The tool call is probably failing. The skill degrades to code-only tutoring by design; check the server logs. |
+| Slow first response of the day | Railway cold start. Check whether your plan keeps the service warm. |
 
 ---
 
-## Customizing the tutor for your course
+## Running the tests
 
-The tutoring style — escalation policy, scaffolding rules, output constraints — lives in a plain markdown file at [src/tutor-system-prompt.md](src/tutor-system-prompt.md), with `${fileName}`, `${taskId}`, and `${solution}` placeholders that get substituted at request time. The wording is intentionally generic. To adapt it for your domain (e.g., specific language idioms, course-specific vocabulary), fork this repo, edit that file, run `vsce package`, and distribute the new `.vsix` to your students.
+The escalation counter is SQL, so the suite runs against a real Postgres rather
+than a mock — testing it against a fake would test the fake.
+
+```bash
+docker run -d --name tutor-test-pg -e POSTGRES_PASSWORD=test \
+  -e POSTGRES_DB=tutor_test -p 5433:5432 postgres:16-alpine
+
+cd server
+DATABASE_URL=postgresql://postgres:test@127.0.0.1:5433/tutor_test npm test
+```
+
+21 tests covering auth and identity handling, the connection diagnostic, solution
+lookup, escalation (including that it increments across *independent* requests —
+the "student opened a fresh chat" case), event logging, and per-student rate
+limiting.
+
+The suite `TRUNCATE`s its tables, so it refuses to run unless the database name
+contains `test`. Point it at your Railway database and it aborts with the password
+masked rather than deleting your data.
+
+---
+
+## Customizing the tutor
+
+The tutoring style lives in
+[`templates/lab-repo/.posit/assistant/skills/tutor/SKILL.md`](templates/lab-repo/.posit/assistant/skills/tutor/SKILL.md).
+It is plain markdown in the lab repo, so you can edit it, commit, and have students
+pull — no rebuild and no redistribution. That is the main practical gain over v0.1,
+where changing a hint policy meant repackaging a `.vsix`.
+
+Being a plain file also means students can read it, and edit or delete it. There is
+no technical fix for that. Some instructors will prefer to show it to them
+deliberately and discuss why the constraint exists.
+
+The skill follows the Agent Skills spec, so it also works in Claude Code and other
+spec-compliant assistants.
 
 ---
 

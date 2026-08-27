@@ -1,0 +1,203 @@
+---
+title: "Socratic Tutor — where the class is struggling"
+format:
+  html:
+    toc: true
+    embed-resources: true
+    fig-width: 8
+    fig-height: 4.5
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r}
+#| label: setup
+
+library(DBI)
+library(RPostgres)
+library(dplyr)
+library(ggplot2)
+library(knitr)
+
+# libpq accepts a full connection URI in `dbname`, so the Railway public
+# connection string can be passed through unchanged. Set it before rendering:
+#   Sys.setenv(TUTOR_DATABASE_URL = "postgresql://...")
+# or put it in ~/.Renviron.
+db_url <- Sys.getenv("TUTOR_DATABASE_URL")
+if (!nzchar(db_url)) {
+  stop("TUTOR_DATABASE_URL is not set. Copy the public connection string from ",
+       "the Railway Postgres service and put it in ~/.Renviron.")
+}
+
+con <- dbConnect(RPostgres::Postgres(), dbname = db_url)
+
+events <- dbGetQuery(con, "
+  select e.student, e.task_id, e.level, e.question, e.found, e.ts,
+         t.title, t.notebook
+  from events e
+  left join tasks t using (task_id)
+  order by e.ts desc
+")
+
+theme_set(theme_minimal(base_size = 12))
+```
+
+```{r}
+#| label: guard
+#| results: asis
+
+if (nrow(events) == 0) {
+  cat("No tutor requests recorded yet. Once students start asking, this report fills in.\n\n")
+  knitr::knit_exit()
+}
+```
+
+Data through `r format(max(events$ts), "%Y-%m-%d %H:%M")`:
+**`r nrow(events)`** requests from **`r dplyr::n_distinct(events$student)`** students
+across **`r dplyr::n_distinct(events$task_id)`** tasks.
+
+## Which tasks generate the most requests
+
+The blunt measure of difficulty. Tall bars are tasks students cannot get through alone.
+
+```{r}
+#| label: requests-per-task
+
+per_task <- events |>
+  filter(found) |>
+  count(task_id, title, sort = TRUE)
+
+per_task |>
+  head(20) |>
+  mutate(label = paste0(task_id, if_else(is.na(title), "", paste0(" — ", title)))) |>
+  ggplot(aes(x = n, y = reorder(label, n))) +
+  geom_col(fill = "steelblue4") +
+  labs(x = "requests", y = NULL)
+```
+
+## Which tasks leave students genuinely stuck
+
+The more useful measure. A task with many requests but mostly level 1 is generating
+quick clarifications. A task where students reach **level 3 or more** is one where
+they are stuck — level is persistent, so it counts asks across separate chat
+sessions, not just within one conversation.
+
+```{r}
+#| label: stuck-rate
+
+stuck <- events |>
+  filter(found) |>
+  group_by(task_id, title) |>
+  summarise(
+    students   = n_distinct(student),
+    reached_l3 = n_distinct(student[level >= 3]),
+    .groups    = "drop"
+  ) |>
+  mutate(share = reached_l3 / students) |>
+  filter(students >= 3) |>
+  arrange(desc(share))
+
+stuck |>
+  head(20) |>
+  mutate(label = paste0(task_id, if_else(is.na(title), "", paste0(" — ", title)))) |>
+  ggplot(aes(x = share, y = reorder(label, share))) +
+  geom_col(fill = "firebrick4") +
+  scale_x_continuous(labels = scales::percent) +
+  labs(x = "share of students reaching level 3+", y = NULL,
+       caption = "tasks with at least 3 students")
+```
+
+```{r}
+#| label: stuck-table
+
+stuck |>
+  head(10) |>
+  transmute(task_id, title, students, `reached L3+` = reached_l3,
+            share = scales::percent(share, accuracy = 1)) |>
+  kable()
+```
+
+## Who is asking
+
+Four students asking sixty times and thirty students asking eight times are
+different problems. The first is an outreach question, the second is a lab-design
+question.
+
+```{r}
+#| label: concentration
+
+events |>
+  filter(found) |>
+  count(student, sort = TRUE) |>
+  ggplot(aes(x = n)) +
+  geom_histogram(binwidth = 2, fill = "grey30") +
+  labs(x = "requests per student", y = "students")
+```
+
+```{r}
+#| label: top-students
+
+events |>
+  filter(found) |>
+  group_by(student) |>
+  summarise(requests = n(), tasks = n_distinct(task_id), last_seen = max(ts),
+            .groups = "drop") |>
+  arrange(desc(requests)) |>
+  head(10) |>
+  kable()
+```
+
+## When the work happens
+
+```{r}
+#| label: timing
+
+events |>
+  mutate(day = as.Date(ts)) |>
+  count(day) |>
+  ggplot(aes(x = day, y = n)) +
+  geom_col(fill = "steelblue4") +
+  labs(x = NULL, y = "requests")
+```
+
+## What students actually asked
+
+Usually the most informative panel in this report: the wording of a confused
+question tells you more than any count. Note that questions are recorded verbatim —
+see the disclosure in the project README.
+
+```{r}
+#| label: recent-questions
+
+events |>
+  filter(!is.na(question), nzchar(question)) |>
+  head(40) |>
+  transmute(
+    when = format(ts, "%m-%d %H:%M"),
+    student, task_id, level,
+    question = substr(question, 1, 220)
+  ) |>
+  kable()
+```
+
+## Tasks nobody asks about
+
+Ambiguous by design: either everyone got it, or nobody attempted it. Worth pairing
+with submission data before drawing a conclusion.
+
+```{r}
+#| label: silent-tasks
+
+tasks <- dbGetQuery(con, "select task_id, title from tasks order by task_id")
+
+anti_join(tasks, per_task, by = "task_id") |>
+  kable()
+```
+
+```{r}
+#| label: teardown
+
+dbDisconnect(con)
+```
