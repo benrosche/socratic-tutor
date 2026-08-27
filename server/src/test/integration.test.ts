@@ -79,7 +79,7 @@ before(async () => {
         throw new Error(`Refusing to run: these tests TRUNCATE tables and "${url.replace(/:[^:@]*@/, ':***@')}" does not look like a test database.`);
     }
 
-    const schema = await fs.readFile(path.resolve(here, '..', '..', '..', 'db', 'schema.sql'), 'utf8');
+    const schema = await fs.readFile(path.resolve(here, '..', '..', 'db', 'schema.sql'), 'utf8');
     await getPool().query(schema);
 
     await new Promise<void>((resolve) => {

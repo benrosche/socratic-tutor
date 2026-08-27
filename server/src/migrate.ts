@@ -10,7 +10,9 @@ import { fileURLToPath } from 'node:url';
 import { closePool, getPool } from './db.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const schemaPath = path.resolve(here, '..', '..', 'db', 'schema.sql');
+// dist/migrate.js -> server/db/schema.sql. The schema lives inside server/ so the
+// deployable unit is self-contained and the container can run migrations too.
+const schemaPath = path.resolve(here, '..', 'db', 'schema.sql');
 
 async function main(): Promise<void> {
     const sql = await fs.readFile(schemaPath, 'utf8');

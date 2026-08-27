@@ -16,7 +16,7 @@ notebook format unchanged.
 - **MCP server** (`server/`) exposing one tool, `get_task_context`, deployable to
   Railway. Bearer-token auth, self-reported student identity via header, SQL-backed
   per-student rate limiting, `/healthz` endpoint.
-- **Postgres schema** (`db/schema.sql`) with `tasks` and `events`, applied via
+- **Postgres schema** (`server/db/schema.sql`) with `tasks` and `events`, applied via
   `npm run migrate`.
 - **Persistent escalation level.** A student's position on the hint ladder is
   computed from their request history, so it survives new chat sessions — the hole
