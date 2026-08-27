@@ -7,7 +7,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/benrosche/socratic-tutor-public.git"
+    "url": "https://github.com/benrosche/socratic-tutor.git"
   },
   "engines": {
     "vscode": "^1.108.0"

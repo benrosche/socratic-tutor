@@ -133,4 +133,4 @@ The difference from v0.1 is that this is now a markdown file in the lab repo. Ed
 
 ## Try it
 
-The code is at [github.com/benrosche/socratic-tutor-public](https://github.com/benrosche/socratic-tutor-public). If you adopt it for your course, I'd be interested to hear how it goes — both the wins and the places where the model's hint quality breaks down.
+The code is at [github.com/benrosche/socratic-tutor](https://github.com/benrosche/socratic-tutor). If you adopt it for your course, I'd be interested to hear how it goes — both the wins and the places where the model's hint quality breaks down.
