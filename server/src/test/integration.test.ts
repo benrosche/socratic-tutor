@@ -15,12 +15,13 @@ import { after, before, beforeEach, describe, it } from 'node:test';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 
-process.env.CLASS_TOKEN ??= 'test-class-token';
+process.env.CLASS_TOKEN ??= 'test-class-token';   // this course's token
+const OTHER_TOKEN = 'other-course-token';        // a second course, for isolation tests
 process.env.RATE_LIMIT ??= '5';
 process.env.RATE_WINDOW_MINUTES ??= '10';
 
 const { createApp } = await import('../app.js');
-const { closePool, getPool, upsertTask } = await import('../db.js');
+const { closePool, getPool, upsertCourse, upsertTask } = await import('../db.js');
 const { SCHEMA_SQL } = await import('../schema.js');
 
 const TOKEN = process.env.CLASS_TOKEN!;
@@ -89,19 +90,36 @@ after(async () => {
     await closePool();
 });
 
+const COURSE = 'test-course';
+const OTHER = 'other-course';
+
 beforeEach(async () => {
-    await getPool().query('truncate events, tasks');
+    await getPool().query('truncate events, tasks, courses');
+    await upsertCourse(COURSE, TOKEN);
+    await upsertCourse(OTHER, OTHER_TOKEN);
+
     await upsertTask({
+        course: COURSE,
         taskId: 'r-lab-1',
         notebook: 'r-lab',
         title: 'Sum the even numbers',
         solution: 'sum_even <- function(x) sum(x[x %% 2 == 0])',
     });
     await upsertTask({
+        course: COURSE,
         taskId: 'r-lab-2',
         notebook: 'r-lab',
         title: 'Count words',
         solution: 'count_words <- function(s) length(strsplit(trimws(s), "\\\\s+")[[1]])',
+    });
+    // The same task id in a different course — the collision multi-course exists
+    // to prevent. Nothing in COURSE should ever see this solution.
+    await upsertTask({
+        course: OTHER,
+        taskId: 'r-lab-1',
+        notebook: 'r-lab',
+        title: 'A different exercise entirely',
+        solution: 'other_course_answer <- 42',
     });
 });
 
@@ -112,7 +130,7 @@ describe('authentication', () => {
         assert.equal((await json(res)).error, 'unauthorized');
     });
 
-    it('rejects a wrong token', async () => {
+    it('rejects a token that matches no course', async () => {
         const res = await rpc({}, headers('alice-nyu', 'not-the-token'));
         assert.equal(res.status, 401);
     });
@@ -137,7 +155,25 @@ describe('authentication', () => {
     it('health check does not require a token', async () => {
         const res = await fetch(`${base}/healthz`);
         assert.equal(res.status, 200);
-        assert.equal((await json(res)).ok, true);
+        const body = await json(res);
+        assert.equal(body.ok, true);
+        assert.equal(body.database, 'ok');
+    });
+
+    // Liveness, not readiness: a database problem must not fail the platform
+    // health check and trigger a restart loop that cannot fix it.
+    it('health check still answers 200 when the database is unreachable', async () => {
+        const saved = process.env.DATABASE_URL;
+        delete process.env.DATABASE_URL;
+        try {
+            const res = await fetch(`${base}/healthz`);
+            assert.equal(res.status, 200);
+            const body = await json(res);
+            assert.equal(body.ok, false);
+            assert.equal(body.database, 'unset');
+        } finally {
+            process.env.DATABASE_URL = saved;
+        }
     });
 });
 
@@ -188,6 +224,65 @@ describe('get_task_context', () => {
         assert.equal(isError, true);
         assert.equal(payload.error, 'unknown_task');
         assert.deepEqual(payload.known_tasks_in_notebook, ['r-lab-1', 'r-lab-2']);
+    });
+});
+
+describe('course isolation', () => {
+    async function callAs(token: string, name: string, args: Record<string, unknown>) {
+        const h = headers('alice-nyu', token);
+        const env = await parseSse(
+            await rpc({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }, h)
+        );
+        return { isError: !!env.result.isError, payload: JSON.parse(env.result.content[0].text) };
+    }
+
+    it('serves each course its own solution for the same task id', async () => {
+        const mine = await callAs(TOKEN, 'get_task_context', { task_id: 'r-lab-1' });
+        const theirs = await callAs(OTHER_TOKEN, 'get_task_context', { task_id: 'r-lab-1' });
+
+        assert.match(mine.payload.reference_solution, /sum_even/);
+        assert.match(theirs.payload.reference_solution, /other_course_answer/);
+        assert.doesNotMatch(mine.payload.reference_solution, /other_course_answer/);
+    });
+
+    it('hides another course\'s tasks entirely', async () => {
+        // r-lab-2 exists only in COURSE.
+        const { isError, payload } = await callAs(OTHER_TOKEN, 'get_task_context', { task_id: 'r-lab-2' });
+        assert.equal(isError, true);
+        assert.equal(payload.error, 'unknown_task');
+    });
+
+    it('does not leak other courses in the task suggestions', async () => {
+        const { payload } = await callAs(OTHER_TOKEN, 'get_task_context', { task_id: 'r-lab-99' });
+        assert.deepEqual(payload.known_tasks_in_notebook, ['r-lab-1']);
+    });
+
+    it('counts escalation separately per course', async () => {
+        await callAs(TOKEN, 'get_task_context', { task_id: 'r-lab-1' });
+        await callAs(TOKEN, 'get_task_context', { task_id: 'r-lab-1' });
+        const { payload } = await callAs(OTHER_TOKEN, 'get_task_context', { task_id: 'r-lab-1' });
+        assert.equal(payload.level, 1);
+    });
+
+    it('reports the course in the connection diagnostic', async () => {
+        const { payload } = await callAs(OTHER_TOKEN, 'check_connection', {});
+        assert.equal(payload.course, OTHER);
+        assert.equal(payload.tasks_loaded, 1);
+    });
+
+    it('tags logged events with the course', async () => {
+        await callAs(OTHER_TOKEN, 'get_task_context', { task_id: 'r-lab-1', question: 'hi' });
+        const { rows } = await getPool().query('select course from events');
+        assert.deepEqual(rows, [{ course: OTHER }]);
+    });
+
+    it('rate limits per course, not globally', async () => {
+        const limit = Number(process.env.RATE_LIMIT);
+        for (let i = 0; i < limit; i++) {
+            await callAs(TOKEN, 'get_task_context', { task_id: 'r-lab-1' });
+        }
+        assert.equal((await callAs(TOKEN, 'get_task_context', { task_id: 'r-lab-1' })).isError, true);
+        assert.equal((await callAs(OTHER_TOKEN, 'get_task_context', { task_id: 'r-lab-1' })).isError, false);
     });
 });
 

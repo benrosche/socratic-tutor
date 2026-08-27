@@ -13,11 +13,20 @@ notebook format unchanged.
 
 ### Added
 
-- **MCP server** (`server/`) exposing one tool, `get_task_context`, deployable to
-  Railway. Bearer-token auth, self-reported student identity via header, SQL-backed
-  per-student rate limiting, `/healthz` endpoint.
-- **Postgres schema** (`server/src/schema.ts`) with `tasks` and `events`, applied via
-  `npm run migrate`.
+- **MCP server** (`server/`) exposing `get_task_context` and `check_connection`,
+  deployable to Railway. Bearer-token auth, self-reported student identity via
+  header, SQL-backed per-student rate limiting, `/healthz` liveness endpoint.
+- **Multi-course support.** One server and one database serve any number of
+  classes. The bearer token *identifies the course*, so a token issued for one
+  class cannot reach another's solutions — lookups, suggestions, escalation counts,
+  rate limits and logging are all scoped to it. Without this, two courses that each
+  have an `01_intro_to_r.qmd` would both produce task `01_intro_to_r-1` and the
+  second load would silently overwrite the first. `npm run add-course` issues and
+  rotates tokens (only hashes are stored); `npm run load` requires `--course` and
+  refuses unknown ones.
+- **Postgres schema** (`server/src/schema.ts`) with `courses`, `tasks` and `events`,
+  applied via `npm run migrate`. Idempotent, including the upgrade from the
+  single-course shape.
 - **Persistent escalation level.** A student's position on the hint ladder is
   computed from their request history, so it survives new chat sessions — the hole
   in v0.1, where escalation reset with every fresh conversation.
@@ -28,9 +37,9 @@ notebook format unchanged.
   need different fixes: no server, no content loaded, database down. The skill is
   instructed to say plainly when the tool is unavailable rather than claim a
   connection it cannot verify.
-- **Test suite** (`npm test`) — 35 tests over the Quarto parser plus auth, identity
+- **Test suite** (`npm test`) — 43 tests over the Quarto parser plus auth, identity
   normalization, the diagnostic, solution lookup, escalation across independent
-  requests, event logging, and per-student rate limiting. Runs against a real
+  requests, event logging, per-student rate limiting, and course isolation. Runs against a real
   Postgres, and refuses to run unless the database name contains `test`, since it
   truncates tables.
 - **Solution loader** (`npm run load`) reading a local clone of the private

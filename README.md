@@ -89,9 +89,11 @@ Set these service variables:
 | Variable | Value |
 |---|---|
 | `DATABASE_URL` | Reference the Postgres add-on (`${{Postgres.DATABASE_URL}}`) |
-| `CLASS_TOKEN` | A secret you generate — `openssl rand -hex 24`. This is what students receive. |
 | `RATE_LIMIT` | Optional, default `30` requests per window |
 | `RATE_WINDOW_MINUTES` | Optional, default `10` |
+
+Class tokens are **not** environment variables — they live in the database, one per
+course. See step 3.
 
 Once deployed, check it:
 
@@ -110,10 +112,20 @@ npm install
 npm run migrate
 ```
 
-### 3. Load your solutions
+### 3. Create the course and load its solutions
+
+Each course gets its own class token, and that token is what identifies the course
+to the server:
 
 ```bash
-npm run load -- ../../socratic-tutor-solutions/notebook-solutions
+npm run add-course -- sna-2026-fall
+```
+
+This prints the token **once** — only its hash is stored. Pass `--token <value>` to
+choose your own, or run it again on an existing course to rotate.
+
+```bash
+npm run load -- ../../socratic-tutor-solutions/sna-2026-fall --course sna-2026-fall
 ```
 
 Add `--dry-run` to preview, and `--prune` to delete tasks that no longer exist in
@@ -143,8 +155,45 @@ That directory contains three things:
 
 ### 5. Hand out the token
 
-Give students the `CLASS_TOKEN` value. One shared token for the class; rotate it
-each semester.
+Give students that course's token. It is shared across the class; rotate it each
+semester with `npm run add-course -- <course>`.
+
+If the lab repo is **private to the class**, put the token directly in
+`settings.json` instead of `{env:TUTOR_TOKEN}`:
+
+```json
+"Authorization": "Bearer sna2026-a3f9c2e8"
+```
+
+Students then set only `TUTOR_STUDENT` — one variable instead of two, which removes
+the most common support ticket. Rotation also gets easier: edit one line, commit,
+and students pick it up on their next pull.
+
+**Do not do this if the lab repo is public.** Keep `{env:TUTOR_TOKEN}` there.
+
+---
+
+## Running several classes
+
+One server and one database serve any number of courses. The token *is* the course
+identity, so a token issued for one class cannot reach another's solutions — task
+lookup, suggestions, escalation counts, rate limits and logging are all scoped to
+the course its token resolves to.
+
+```bash
+npm run add-course -- stats-2026-fall
+npm run load -- ../../socratic-tutor-solutions/stats-2026-fall --course stats-2026-fall
+npm run add-course -- --list     # courses and how many tasks each has
+```
+
+This matters more than it looks. Task IDs come from notebook filenames, so two
+courses that each have an `01_intro_to_r.qmd` both produce `01_intro_to_r-1`.
+Without the course dimension the second load would silently overwrite the first and
+students would start receiving the other class's solutions. The loader refuses to
+write to a course that does not exist, which makes that mistake hard to make.
+
+Each course gets its own lab repo, its own `settings.json`, and its own token. The
+dashboard can be filtered by course.
 
 ---
 

@@ -20,6 +20,8 @@ const rateLimit = (): number => Number(process.env.RATE_LIMIT ?? 30);
 const rateWindowMinutes = (): number => Number(process.env.RATE_WINDOW_MINUTES ?? 10);
 
 export interface RequestContext {
+    /** Course the bearer token resolved to. Scopes every lookup below. */
+    course: string;
     /** Normalized, self-reported GitHub username from the X-Tutor-Student header. */
     student: string;
 }
@@ -74,13 +76,14 @@ export function buildServer(ctx: RequestContext): McpServer {
             const base = {
                 server_reachable: true,
                 server_version: SERVER_VERSION,
+                course: ctx.course,
                 student_seen_by_server: ctx.student,
                 rate_limit: `${rateLimit()} requests per ${rateWindowMinutes()} minutes`,
             };
 
             try {
-                const stats = await taskStats();
-                const recent = await countRecentRequests(ctx.student, rateWindowMinutes());
+                const stats = await taskStats(ctx.course);
+                const recent = await countRecentRequests(ctx.course, ctx.student, rateWindowMinutes());
 
                 return textResult({
                     ok: stats.count > 0,
@@ -92,7 +95,7 @@ export function buildServer(ctx: RequestContext): McpServer {
                     your_requests_in_window: recent,
                     note:
                         stats.count === 0
-                            ? 'The server is reachable but no solutions are loaded. The instructor needs to run `npm run load`.'
+                            ? `The server is reachable but no solutions are loaded for course "${ctx.course}". The instructor needs to run \`npm run load\`.`
                             : 'Fully operational.',
                 });
             } catch {
@@ -130,7 +133,7 @@ export function buildServer(ctx: RequestContext): McpServer {
             const taskId = task_id.trim();
             const q = question?.trim() ? question.trim().slice(0, 4000) : null;
 
-            const recent = await countRecentRequests(ctx.student, rateWindowMinutes());
+            const recent = await countRecentRequests(ctx.course, ctx.student, rateWindowMinutes());
             if (recent >= rateLimit()) {
                 return textResult(
                     {
@@ -141,11 +144,11 @@ export function buildServer(ctx: RequestContext): McpServer {
                 );
             }
 
-            const task = await getTask(taskId);
+            const task = await getTask(ctx.course, taskId);
 
             if (!task) {
-                await logEvent({ student: ctx.student, taskId, level: 0, question: q, found: false });
-                const nearby = await suggestTasks(taskId);
+                await logEvent({ course: ctx.course, student: ctx.student, taskId, level: 0, question: q, found: false });
+                const nearby = await suggestTasks(ctx.course, taskId);
                 return textResult(
                     {
                         error: 'unknown_task',
@@ -158,8 +161,8 @@ export function buildServer(ctx: RequestContext): McpServer {
                 );
             }
 
-            const level = (await countPriorAsks(ctx.student, taskId)) + 1;
-            await logEvent({ student: ctx.student, taskId, level, question: q, found: true });
+            const level = (await countPriorAsks(ctx.course, ctx.student, taskId)) + 1;
+            await logEvent({ course: ctx.course, student: ctx.student, taskId, level, question: q, found: true });
 
             return textResult({
                 task_id: task.task_id,

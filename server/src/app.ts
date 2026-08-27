@@ -1,8 +1,7 @@
-import crypto from 'node:crypto';
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { buildServer, type RequestContext } from './tools.js';
-import { getPool } from './db.js';
+import { courseForToken, getPool } from './db.js';
 
 /**
  * Identity is self-reported: the student sets TUTOR_STUDENT in their environment
@@ -17,39 +16,71 @@ export function normalizeStudent(raw: string): string | null {
 }
 
 export function createApp(): Express {
-    const classToken = process.env.CLASS_TOKEN;
-    if (!classToken) {
-        throw new Error('CLASS_TOKEN is not set. Generate one (e.g. `openssl rand -hex 24`), set it in the Railway service variables, and hand the same value to students as TUTOR_TOKEN.');
-    }
-
-    /** Length-independent comparison, so a wrong token leaks nothing through timing. */
-    const tokenMatches = (presented: string): boolean => {
-        const a = crypto.createHash('sha256').update(presented).digest();
-        const b = crypto.createHash('sha256').update(classToken).digest();
-        return crypto.timingSafeEqual(a, b);
-    };
-
     const app = express();
     app.disable('x-powered-by');
     app.use(express.json({ limit: '1mb' }));
 
+    /**
+     * Liveness, not readiness — this always answers 200 if the process is serving.
+     *
+     * Gating it on the database meant a database blip failed the platform health
+     * check, which restarted the container, which did not fix the database. The
+     * database state is still reported in the body, and `check_connection` is what
+     * surfaces it to the tutor.
+     */
     app.get('/healthz', async (_req, res) => {
+        if (!process.env.DATABASE_URL) {
+            res.status(200).json({ ok: false, database: 'unset', detail: 'DATABASE_URL is not set on this service.' });
+            return;
+        }
         try {
             await getPool().query('select 1');
-            res.status(200).json({ ok: true });
-        } catch {
-            res.status(503).json({ ok: false, error: 'database unreachable' });
+            res.status(200).json({ ok: true, database: 'ok' });
+        } catch (err) {
+            res.status(200).json({
+                ok: false,
+                database: 'error',
+                detail: err instanceof Error ? err.message : String(err),
+            });
         }
     });
 
-    function authenticate(req: Request, res: Response, next: NextFunction): void {
+    /**
+     * The bearer token identifies the *course*, not just the caller. Everything
+     * downstream is scoped to whatever this resolves to, so a token issued for one
+     * class cannot reach another class's solutions.
+     */
+    async function authenticate(req: Request, res: Response, next: NextFunction): Promise<void> {
         const header = req.get('authorization') ?? '';
         const match = header.match(/^Bearer\s+(.+)$/i);
 
-        if (!match || !tokenMatches(match[1].trim())) {
+        if (!match) {
             res.status(401).json({
                 error: 'unauthorized',
-                message: 'Missing or invalid class token. Set TUTOR_TOKEN in your .Renviron to the value your instructor gave you, then restart Positron.',
+                message: 'Missing class token. Set TUTOR_TOKEN in your .Renviron to the value your instructor gave you, then restart Positron.',
+            });
+            return;
+        }
+
+        let course: string | null;
+        try {
+            course = await courseForToken(match[1]);
+        } catch (err) {
+            // Distinguished from a bad token on purpose: this is the instructor's
+            // problem, not the student's, and saying "invalid token" would send
+            // them chasing their own configuration.
+            console.error('[auth] course lookup failed', err);
+            res.status(503).json({
+                error: 'server_unavailable',
+                message: 'The tutor server cannot reach its database, so it cannot verify your class token. This is a server problem — tell your instructor.',
+            });
+            return;
+        }
+
+        if (!course) {
+            res.status(401).json({
+                error: 'unauthorized',
+                message: 'That class token is not valid for any active course. Check TUTOR_TOKEN in your .Renviron, then restart Positron.',
             });
             return;
         }
@@ -72,7 +103,7 @@ export function createApp(): Express {
             return;
         }
 
-        (req as Request & { ctx: RequestContext }).ctx = { student };
+        (req as Request & { ctx: RequestContext }).ctx = { course, student };
         next();
     }
 

@@ -14,7 +14,8 @@
     "dev": "tsc -p . && node dist/index.js",
     "load": "tsc -p . && node dist/load-solutions.js",
     "migrate": "tsc -p . && node dist/migrate.js",
-    "test": "tsc -p . && node --test \"dist/test/*.test.js\""
+    "test": "tsc -p . && node --test \"dist/test/*.test.js\"",
+    "add-course": "tsc -p . && node dist/add-course.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.20.0",

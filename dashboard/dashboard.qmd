@@ -33,13 +33,20 @@ if (!nzchar(db_url)) {
 
 con <- dbConnect(RPostgres::Postgres(), dbname = db_url)
 
+# Set TUTOR_COURSE to focus one class; leave it unset to see everything.
+course_filter <- Sys.getenv("TUTOR_COURSE")
+
 events <- dbGetQuery(con, "
-  select e.student, e.task_id, e.level, e.question, e.found, e.ts,
+  select e.course, e.student, e.task_id, e.level, e.question, e.found, e.ts,
          t.title, t.notebook
   from events e
-  left join tasks t using (task_id)
+  left join tasks t on t.course = e.course and t.task_id = e.task_id
   order by e.ts desc
 ")
+
+if (nzchar(course_filter)) {
+  events <- dplyr::filter(events, course == course_filter)
+}
 
 theme_set(theme_minimal(base_size = 12))
 ```
@@ -56,7 +63,9 @@ if (nrow(events) == 0) {
 
 Data through `r format(max(events$ts), "%Y-%m-%d %H:%M")`:
 **`r nrow(events)`** requests from **`r dplyr::n_distinct(events$student)`** students
-across **`r dplyr::n_distinct(events$task_id)`** tasks.
+across **`r dplyr::n_distinct(events$task_id)`** tasks in
+**`r dplyr::n_distinct(events$course)`** course(s):
+`r paste(sort(unique(events$course)), collapse = ", ")`.
 
 ## Which tasks generate the most requests
 
@@ -190,7 +199,8 @@ with submission data before drawing a conclusion.
 ```{r}
 #| label: silent-tasks
 
-tasks <- dbGetQuery(con, "select task_id, title from tasks order by task_id")
+tasks <- dbGetQuery(con, "select course, task_id, title from tasks order by course, task_id")
+if (nzchar(course_filter)) tasks <- dplyr::filter(tasks, course == course_filter)
 
 anti_join(tasks, per_task, by = "task_id") |>
   kable()
