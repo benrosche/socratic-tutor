@@ -53,13 +53,22 @@ notebook format unchanged.
 - **Instructor dashboard** (`dashboard/dashboard.qmd`) over the request log:
   requests per task, share of students reaching level 3+, per-student
   concentration, timing, and verbatim question text.
+- **Student installer** (`install.R`). One line in the R console writes the skill
+  and an `mcpServers` entry into the student's user-level Posit Assistant config,
+  merging rather than overwriting and backing up first. `uninstall_tutor()`
+  reverses it. Writing user-level config means the tutor works wherever students
+  keep their notebooks, and keeps the class token out of the course repo — which
+  matters when that repo is public. Resolves the home directory from
+  `USERPROFILE`/`HOME` rather than `~`, since R expands `~` to Documents on
+  Windows.
 - Request logging, with a disclosure section in the README and a student-facing
   template in `templates/lab-repo/README.md`.
 
 ### Changed
 
-- Students no longer install anything. Setup is two environment variables; the
-  `.vsix`, the GitHub PAT, and the four VS Code settings are all gone.
+- Students no longer install an extension. Setup is one line in the R console; the
+  `.vsix`, the GitHub PAT, the four VS Code settings and the `.Renviron` variables
+  are all gone.
 - The tutoring prompt moved from `src/tutor-system-prompt.md` (compiled into the
   extension) to a markdown file in the lab repo, so it can be edited and pulled
   rather than repackaged and redistributed.

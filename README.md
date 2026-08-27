@@ -199,12 +199,38 @@ dashboard can be filtered by course.
 
 ## Student setup
 
-Two lines in `~/.Renviron`, then restart Positron:
+One line in the R console, using the class token the instructor handed out:
+
+```r
+source("https://raw.githubusercontent.com/benrosche/socratic-tutor/master/install.R")
+
+install_tutor(
+  token   = "<the token your instructor gave you>",
+  student = "<your GitHub username>",
+  url     = "https://<your-course-server>.up.railway.app"
+)
+```
+
+Then restart Positron. `uninstall_tutor()` reverses it.
+
+This writes to the **user-level** Posit Assistant config, so it works regardless of
+where a student keeps their notebooks:
 
 ```
-TUTOR_TOKEN=<the token your instructor gave you>
-TUTOR_STUDENT=<your GitHub username>
+<home>/.posit/assistant/skills/tutor/SKILL.md   the tutor's instructions
+<home>/.posit/assistant/settings.json           gains an mcpServers entry
 ```
+
+Existing settings are merged, not overwritten, and backed up first.
+
+> **Why an installer rather than committing `settings.json`?** The token must not
+> live in a public course repo, and a project-level config only works if students
+> open the repo as their project. Writing user-level config sidesteps both. It also
+> means the token never becomes an environment variable students have to manage.
+
+`install.R` contains no secrets — the token is supplied at install time and only
+ever written to the student's own machine, so the installer is safe to host in a
+public repo.
 
 Then, in a notebook with a `#| task:` marker, select **Tutor** from the dropdown at
 the bottom of the chat pane and ask away:
