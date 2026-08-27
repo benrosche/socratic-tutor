@@ -2,9 +2,9 @@
 # "Root Directory" service setting being configured correctly. Leave that setting
 # blank.
 #
-# Everything the image needs lives under server/, including db/schema.sql. Nothing
-# is copied from elsewhere in the repo: an earlier version pulled the schema from a
-# top-level db/ and Railway's build context did not reliably contain it.
+# Everything the image needs lives under server/src. The schema is embedded in the
+# TypeScript (src/schema.ts) rather than shipped as a .sql file, because Railway's
+# build context repeatedly failed to include it at any path.
 
 FROM node:22-slim AS build
 WORKDIR /app/server
@@ -26,7 +26,6 @@ COPY server/package.json server/package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=build /app/server/dist ./dist
-COPY server/db ./db
 
 EXPOSE 3000
 CMD ["node", "dist/index.js"]

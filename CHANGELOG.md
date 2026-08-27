@@ -16,7 +16,7 @@ notebook format unchanged.
 - **MCP server** (`server/`) exposing one tool, `get_task_context`, deployable to
   Railway. Bearer-token auth, self-reported student identity via header, SQL-backed
   per-student rate limiting, `/healthz` endpoint.
-- **Postgres schema** (`server/db/schema.sql`) with `tasks` and `events`, applied via
+- **Postgres schema** (`server/src/schema.ts`) with `tasks` and `events`, applied via
   `npm run migrate`.
 - **Persistent escalation level.** A student's position on the hint ladder is
   computed from their request history, so it survives new chat sessions — the hole
@@ -28,7 +28,7 @@ notebook format unchanged.
   need different fixes: no server, no content loaded, database down. The skill is
   instructed to say plainly when the tool is unavailable rather than claim a
   connection it cannot verify.
-- **Integration test suite** (`npm test`) — 21 tests over auth, identity
+- **Test suite** (`npm test`) — 35 tests over the Quarto parser plus auth, identity
   normalization, the diagnostic, solution lookup, escalation across independent
   requests, event logging, and per-student rate limiting. Runs against a real
   Postgres, and refuses to run unless the database name contains `test`, since it

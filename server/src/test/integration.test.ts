@@ -11,12 +11,9 @@
  * name does not contain "test".
  */
 import assert from 'node:assert/strict';
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
-import { fileURLToPath } from 'node:url';
 
 process.env.CLASS_TOKEN ??= 'test-class-token';
 process.env.RATE_LIMIT ??= '5';
@@ -24,9 +21,9 @@ process.env.RATE_WINDOW_MINUTES ??= '10';
 
 const { createApp } = await import('../app.js');
 const { closePool, getPool, upsertTask } = await import('../db.js');
+const { SCHEMA_SQL } = await import('../schema.js');
 
 const TOKEN = process.env.CLASS_TOKEN!;
-const here = path.dirname(fileURLToPath(import.meta.url));
 
 let server: Server;
 let base: string;
@@ -79,8 +76,7 @@ before(async () => {
         throw new Error(`Refusing to run: these tests TRUNCATE tables and "${url.replace(/:[^:@]*@/, ':***@')}" does not look like a test database.`);
     }
 
-    const schema = await fs.readFile(path.resolve(here, '..', '..', 'db', 'schema.sql'), 'utf8');
-    await getPool().query(schema);
+    await getPool().query(SCHEMA_SQL);
 
     await new Promise<void>((resolve) => {
         server = createApp().listen(0, () => resolve());
