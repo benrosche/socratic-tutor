@@ -61,14 +61,20 @@ chat window does not reset it.
 ### 1. Deploy the server
 
 Create a Railway project, add a **Postgres** database, then add a service from this
-repository and set its **Root Directory** to `server` (Service → Settings → Root
-Directory).
+repository. **Leave the Root Directory setting blank** — the repo ships a
+[`Dockerfile`](Dockerfile) and [`railway.toml`](railway.toml) at the root, which
+locate the server under `server/` for you.
 
-> Set the root directory *before* the first deploy. There is no `package.json` at
-> the repo root, so if it is unset the builder analyzes the whole repo and fails
-> with `Railpack could not determine how to build the app`. That error means the
-> root directory, not a problem with your code —
-> [`server/railway.toml`](server/railway.toml) is not read until it is set.
+> If you previously set a Root Directory, clear it. Pointing it at `server` makes
+> Railway look for build config inside that folder instead, where there is none.
+
+You can build the exact production image locally:
+
+```bash
+docker build -t tutor-server .
+docker run --rm -p 3000:3000 -e CLASS_TOKEN=dev \
+  -e DATABASE_URL='postgresql://...?sslmode=disable' tutor-server
+```
 
 Set these service variables:
 

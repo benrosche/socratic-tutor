@@ -21,11 +21,15 @@ export function getPool(): pg.Pool {
         throw new Error('DATABASE_URL is not set. On Railway this is injected by the Postgres add-on; locally, copy the public connection string from the Railway dashboard.');
     }
 
-    const isInternal = /\.railway\.internal|localhost|127\.0\.0\.1/.test(connectionString);
+    // An explicit sslmode in the URL always wins, so a self-hosted or containerized
+    // Postgres without TLS can be addressed by any hostname. Otherwise fall back to
+    // the hostname: Railway's private network is plaintext, everything else is not.
+    const sslDisabled = /[?&]sslmode=disable\b/.test(connectionString);
+    const isInternal = /\.railway\.internal|localhost|127\.0\.0\.1|host\.docker\.internal/.test(connectionString);
 
     _pool = new Pool({
         connectionString,
-        ssl: isInternal ? false : { rejectUnauthorized: false },
+        ssl: sslDisabled || isInternal ? false : { rejectUnauthorized: false },
         max: 5,
     });
     return _pool;

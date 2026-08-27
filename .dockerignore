@@ -1,0 +1,11 @@
+.git
+.gitignore
+legacy
+dashboard
+templates
+node_modules
+**/node_modules
+**/dist
+**/out
+*.md
+tutorial.html
