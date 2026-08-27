@@ -88,7 +88,7 @@ Two requirements, one of which the v0.1 docs got wrong:
 
 ### Step 2 — Deploy
 
-Railway project → add Postgres → add a service from this repo with **Root Directory** `server`. Set `DATABASE_URL` to the Postgres reference and `CLASS_TOKEN` to a secret you generate. Then from `server/`:
+Railway project → add Postgres → add a service from this repo with **Root Directory** `server`. Set `DATABASE_URL` to the Postgres reference. Then from `server/`:
 
 ```bash
 npm install

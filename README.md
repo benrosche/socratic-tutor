@@ -80,7 +80,7 @@ You can build the identical production image locally:
 ```bash
 cd server
 docker build -t tutor-server .
-docker run --rm -p 3000:3000 -e CLASS_TOKEN=dev \
+docker run --rm -p 3000:3000 \
   -e DATABASE_URL='postgresql://...?sslmode=disable' tutor-server
 ```
 
@@ -162,7 +162,7 @@ If the lab repo is **private to the class**, put the token directly in
 `settings.json` instead of `{env:TUTOR_TOKEN}`:
 
 ```json
-"Authorization": "Bearer sna2026-a3f9c2e8"
+"Authorization": "Bearer PASTE-THE-TOKEN-add-course-PRINTED"
 ```
 
 Students then set only `TUTOR_STUDENT` — one variable instead of two, which removes
@@ -327,7 +327,7 @@ directly and extract every solution, and the token will eventually be shared.
 What limits this:
 
 - Per-student rate limiting (`RATE_LIMIT`, default 30 requests per 10 minutes).
-- Rotating `CLASS_TOKEN` each semester.
+- Rotating each course's token every semester with `npm run add-course`.
 - The dashboard — a student hitting forty tasks in two minutes is conspicuous.
 
 If that trade is wrong for your course, the cheapest hardening is to stop shipping

@@ -3,7 +3,7 @@
  * already exists.
  *
  *   npm run add-course -- sna-2026-fall
- *   npm run add-course -- sna-2026-fall --token sna2026-something
+ *   npm run add-course -- sna-2026-fall --token <your-own-token>
  *   npm run add-course -- --list
  *
  * The token is what identifies the course to the server, so each class gets its
