@@ -21,8 +21,7 @@ library(dplyr)
 library(ggplot2)
 library(knitr)
 
-# libpq accepts a full connection URI in `dbname`, so the Railway public
-# connection string can be passed through unchanged. Set it before rendering:
+# The Railway **public** connection string. Set it before rendering:
 #   Sys.setenv(TUTOR_DATABASE_URL = "postgresql://...")
 # or put it in ~/.Renviron.
 db_url <- Sys.getenv("TUTOR_DATABASE_URL")
@@ -31,7 +30,29 @@ if (!nzchar(db_url)) {
        "the Railway Postgres service and put it in ~/.Renviron.")
 }
 
-con <- dbConnect(RPostgres::Postgres(), dbname = db_url)
+# RPostgres does NOT expand a connection URI passed as `dbname` — it treats it as a
+# literal database name and silently falls back to localhost, which fails with a
+# confusing "connection refused on 127.0.0.1:5432". So split the URI ourselves.
+pg <- regmatches(db_url, regexec(
+  "^postgres(?:ql)?://([^:/@]+)(?::([^@]*))?@([^:/?]+)(?::([0-9]+))?/([^?]+)", db_url))[[1]]
+if (!length(pg)) {
+  stop("TUTOR_DATABASE_URL is not a postgresql:// URL: ", db_url)
+}
+
+# Railway's public proxy requires TLS but presents a certificate that is not in R's
+# trust store; `require` encrypts without verifying, matching server/src/db.ts.
+con <- dbConnect(
+  RPostgres::Postgres(),
+  host     = pg[4],
+  port     = if (nzchar(pg[5])) as.integer(pg[5]) else 5432L,
+  dbname   = URLdecode(pg[6]),
+  user     = URLdecode(pg[2]),
+  password = URLdecode(pg[3]),
+  sslmode  = "require",
+  # Otherwise a SQL `count(*)` comes back as integer64 and prints as garbage
+  # (2.667954e-322) rather than 54.
+  bigint   = "integer"
+)
 
 # Set TUTOR_COURSE to focus one class; leave it unset to see everything.
 course_filter <- Sys.getenv("TUTOR_COURSE")

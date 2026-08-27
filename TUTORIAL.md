@@ -1,5 +1,13 @@
 # A Socratic AI tutor for programming classes
 
+> **This is written for instructors** — why the thing exists, what it costs, and how
+> to stand one up for your own course.
+>
+> **If you are a student in a course that already uses it**, you want two minutes of
+> setup instead of an essay: see [For students](README.md#for-students) in the
+> README, or your own course's lab repo README, which your instructor has filled in
+> with the specifics.
+
 ## The problem
 
 Teaching programming to a roomful of students is, before anything else, an attention-allocation problem. Twenty students get stuck on twenty different things at the same moment, and the instructor can only be in one place at once. The pressure to relieve that by handing out the worked solutions is constant — but doing so quietly undermines the thing you were trying to teach. Reading the solution feels like progress; it tells the student *what* the answer is without forcing them through the discomfort that builds the skill. Most students, given the choice between struggling for twenty minutes and copying a working snippet, copy. They are not wrong to: the immediate reward is real. But the productive struggle is the part that sticks.
@@ -92,30 +100,64 @@ Railway project → add Postgres → add a service from this repo with **Root Di
 
 ```bash
 npm install
-npm run migrate                                    # create the tables
-npm run load -- ../../my-solutions/notebook-solutions   # load content
+npm run migrate                                  # create the tables
+npm run add-course -- my-course-2026             # issue the class token — printed once
+npm run load -- ../../my-solutions --course my-course-2026
 ```
+
+The token *is* the course identity, so one server and one database serve any number
+of classes and a token issued for one cannot reach another's solutions. The loader
+refuses a course that does not exist, which makes the mistake hard to make.
 
 `curl https://<app>.up.railway.app/healthz` should return `{"ok":true}`.
 
+Then check that every exercise students can ask about actually has a solution behind
+it — the one failure a clean load cannot catch, because it spans two repos:
+
+```bash
+npm run verify -- ../../my-lab-repo/labs --course my-course-2026
+```
+
+It exits non-zero and names the task IDs, so you can gate a publish on it.
+
 ### Step 3 — Wire up the lab repo
 
-Copy `templates/lab-repo/.posit/` into the repo your students clone and put your
-Railway URL in `settings.json`. Copy `templates/lab-repo/README.md` too, and fill in
-the disclosure section.
+Copy `templates/lab-repo/.posit/` into the repo your students clone, and
+`templates/lab-repo/README.md` too, filling in the disclosure section.
 
-### Step 4 — Tell students two things
+This gives students the **skill** and the **Tutor agent**. It does not connect them
+to your server, and this is the one thing worth knowing before you spend an evening
+debugging it: Posit Assistant reads skills from a workspace directory, but reads
+`mcpServers` only from the user-level `<home>/.posit/assistant/settings.json`. Ship
+a `settings.json` in the lab repo and you get a tutor that loads, tutors, and never
+connects — silently, because from the model's side the tools simply do not exist.
 
-Set `TUTOR_TOKEN` and `TUTOR_STUDENT` in `~/.Renviron`. Mark tasks with `#| task:`.
+### Step 4 — Point students at the installer
 
-That is the whole setup. No extension to install, no GitHub token on any student
-machine.
+Change the `url` default in `install.R` to your server, then give students the class
+token. They run one line in the R console:
+
+```r
+source("https://raw.githubusercontent.com/benrosche/socratic-tutor/master/install.R")
+install_tutor(token = "...", student = "their-github-username")
+```
+
+It writes user-level config, then calls your server and reports the course, the
+identity the server sees, and how many exercises are loaded — so a student knows
+immediately whether it worked, rather than discovering it mid-lab. `tutor_check()`
+re-runs that test later; `uninstall_tutor()` reverses it.
+
+Then tell them to mark their cursor's chunk with `#| task:` — or rather, don't:
+the markers are already in the worksheets you generated. Just tell them not to
+delete them.
+
+No extension to install, and the class token never lives in the lab repo.
 
 ## Customizing the tutor for your domain
 
 The default skill is deliberately generic — it says "programming exercises" and avoids naming a language. For your course you will want to name the language, mention the libraries students should reach for first, and swap the Socratic example questions for ones in your domain's vocabulary.
 
-The difference from v0.1 is that this is now a markdown file in the lab repo. Edit it, commit, students pull. In v0.1 the same change meant editing the prompt, running `vsce package`, uploading a release, and asking twenty students to reinstall — which in practice meant the prompt was written once and never tuned. Tuning it against real student interactions is the whole game, so lowering that cost matters more than it sounds.
+The difference from v0.1 is that this is now just a markdown file. Edit it and commit; students pick it up by re-running `install_tutor()`, which re-downloads the skill — one line in the console. In v0.1 the same change meant editing the prompt, running `vsce package`, uploading a release, and asking twenty students to reinstall, which in practice meant the prompt was written once and never tuned. Tuning it against real student interactions is the whole game, so lowering that cost matters more than it sounds.
 
 ## Honest caveats
 
@@ -127,7 +169,7 @@ The difference from v0.1 is that this is now a markdown file in the lab repo. Ed
 
 - **Tool results may be visible.** Depending on your Positron version, a student may be able to expand a tool call in the transcript and read what came back. Check this. If they can, the reference solution is one click away — weaker than v0.1, where it lived in an invisible prompt.
 
-- **Identity is self-reported.** `TUTOR_STUDENT` is a label, not authentication. It is fine for "which tasks is the class finding hard" and unfit for anything touching a grade.
+- **Identity is self-reported.** The username a student passes to `install_tutor()` is written into their own config and sent as a header; it is a label, not authentication. Anyone with the class token can claim any name. Fine for "which tasks is the class finding hard", unfit for anything touching a grade.
 
 - **This is not a replacement for office hours.** It is a partial substitute for "I can't be everywhere at once" — not for the deeper guidance that comes from a human reading what a student has been struggling with for a week.
 

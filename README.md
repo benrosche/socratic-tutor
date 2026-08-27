@@ -5,10 +5,17 @@ work through lab exercises **without giving them the answer**: it looks up the
 instructor's reference solution for whichever task the student is on, then replies
 only with diagnoses, guiding questions and small scaffolds.
 
-Students get it by cloning the course lab repo. There is nothing to install, and no
-credentials of yours end up on their machines.
-
 For the motivation and a full walkthrough, see [`TUTORIAL.md`](TUTORIAL.md).
+
+### Which half of this do you need?
+
+| You are | Start here | Takes |
+|---|---|---|
+| **A student** in a course that uses this | [For students](#for-students) | About two minutes — one line in the R console |
+| **An instructor** setting this up for a class | [For instructors](#for-instructors) | An afternoon, most of it Railway |
+
+Students need the class token from their instructor and nothing else. Instructors
+need a Railway account and a repo of reference solutions.
 
 > **Upgrading from v0.1?** The VS Code extension is archived at
 > [`legacy/vscode-extension/`](legacy/vscode-extension/). It still works in stock
@@ -45,7 +52,100 @@ chat window does not reset it.
 
 ---
 
-## What you need
+## For students
+
+Everything below this heading is for you. The rest of the README is your
+instructor's problem.
+
+You need **Positron 2026.07 or later**, and the **class token** your instructor
+handed out. Nothing else.
+
+### Install it
+
+One line in the R console:
+
+```r
+source("https://raw.githubusercontent.com/benrosche/socratic-tutor/master/install.R")
+```
+
+That only loads the installer and tells you what to run next. Then:
+
+```r
+install_tutor(
+  token   = "<the token your instructor gave you>",
+  student = "<your GitHub username>"
+)
+```
+
+Add `url = "https://<your-course-server>.up.railway.app"` if your instructor gives
+you one; otherwise the default is used.
+
+It writes the files, then **calls your course server and tells you what came back**:
+
+```
+  Connected to the course server.
+    course        : sna-2026-fall
+    it sees you as: benrosche
+    exercises     : 54 loaded
+```
+
+If it says anything else — a rejected token, an unreachable server — the tutor will
+not work, and restarting Positron will not fix it. Fix what it reports first.
+
+Then **quit Positron completely** (every window, not a reload) and reopen it. Ask:
+
+> `/tutor are you connected?`
+
+It should report the same course and username. You can re-run `tutor_check()` in the
+R console at any time without retyping the token, and `uninstall_tutor()` reverses
+the install.
+
+### Use it
+
+In a notebook with a `#| task:` marker, select **Tutor** from the dropdown at the
+bottom of the chat pane and ask away:
+
+> My ERGM won't converge — what am I doing wrong?
+
+Or use `/tutor <question>` for a one-off without switching modes.
+
+The tutor gets more concrete the more you ask about the **same** task: the first
+answer is usually a question back, and by the third you get a small illustrative
+snippet. Opening a fresh chat does not reset that, so there is nothing to game. It
+will not write code into your files — that is a capability restriction, not a mood.
+
+If the tutor says it is running *without* a server connection, that is a real
+answer rather than a failure to try: it is instructed to say so plainly rather than
+claim a connection it cannot verify. Hints still work, just from your code alone,
+with no reference solution.
+
+### If something is wrong
+
+| Symptom | Fix |
+|---|---|
+| `install_tutor()` says the token was rejected (401) | Wrong class token. Ask your instructor. |
+| `install_tutor()` cannot reach the server | Check your internet. If it persists, tell your instructor — it is probably their server. |
+| Sourcing the installer printed nothing but "loaded" | That is correct. It only defines the commands; you still have to run `install_tutor(...)`. |
+| Tutor says it has no server connection, but `tutor_check()` is fine | You did not fully quit Positron. Close every window and reopen. |
+| `student_seen_by_server` is not your username | Re-run `install_tutor()` with the right username, or your history splits across two identities. |
+| Tutor does not know your exercise | The `#| task:` marker has no solution behind it. Tell your instructor — it is not something you can fix. |
+| Vague, generic hints | The tool call is probably failing. Ask `/tutor are you connected?`. |
+
+### What is recorded
+
+Every request you make is logged: your username, which task, how many times you
+have asked about it, **the text of your question verbatim**, and the time. Your
+instructor reads this to see which exercises the class finds hard. See
+[Data collected and disclosure](#data-collected-and-disclosure) for the full detail,
+and ask your instructor about their retention policy.
+
+---
+
+## For instructors
+
+Everything from here down is setup and operation. Students do not need any of it.
+
+### What you need
 
 - Positron **2026.07 or later** (Posit Assistant). Earlier versions shipped the
   deprecated Positron Assistant and behave differently.
@@ -56,7 +156,7 @@ chat window does not reset it.
 
 ---
 
-## Instructor setup
+## Setup, step by step
 
 ### 1. Deploy the server
 
@@ -135,7 +235,26 @@ up immediately rather than during a lab.
 Solutions live in Postgres, not in this repo and not in the deployment. **Content
 updates need no redeploy** — re-run `npm run load` and the change is live.
 
-### 4. Set up the lab repo
+### 4. Check that every exercise has a solution
+
+Task IDs live in two repos — the `#| task:` markers in the notebooks students open,
+and the solution notebooks the loader reads. Nothing keeps them in step, and the
+mismatch only shows up as "solution not found" in the middle of a lab:
+
+```bash
+npm run verify -- ../../your-lab-repo/labs --course sna-2026-fall
+```
+
+It reports per notebook how many markers resolve, names every marker with no
+solution loaded, and exits non-zero — so you can gate publishing on it. Pass
+`--pattern` if your student notebooks are not named `*-student.qmd`.
+
+This is the failure a clean `npm run load` cannot catch: the loader only sees the
+solutions repo, so it cannot know an exercise exists that nothing answers. Task IDs
+come from the solution notebook's **filename**, so a renamed lab breaks the link
+even when both sides look correct.
+
+### 5. Set up the lab repo
 
 Copy [`templates/lab-repo/.posit/`](templates/lab-repo/.posit/) into the repository
 your students clone, and edit `settings.json` to replace `REPLACE-ME` with your
@@ -147,29 +266,35 @@ That directory contains three things:
 - `agents/tutor.agent.md` — the **Tutor** entry in the agent dropdown. Its `tools:`
   list omits editing and code execution, so the tutor structurally cannot write into
   a student's file.
-- `settings.json` — points Posit Assistant at your server.
+- `settings.json` — a reference copy of the server entry. See the warning below.
 
 > The `tools:` names in the agent file should be reconciled with what your Positron
 > version offers. Run **Chat: New Custom Agent…** from the Command Palette to
 > generate a file listing the available tools, and adjust if they differ.
 
-### 5. Hand out the token
+> **A workspace `.posit/` does not configure the MCP server.** Posit Assistant picks
+> up **skills** from a workspace directory, but reads `mcpServers` only from the
+> user-level `<home>/.posit/assistant/settings.json`. A lab repo shipping
+> `settings.json` therefore produces a tutor that loads, tutors, and never connects
+> — with no error, because from the model's side the tools simply do not exist.
+> **Students must run `install.R`.** The copy in the lab repo is a reference for
+> you, not a working configuration for them.
 
-Give students that course's token. It is shared across the class; rotate it each
-semester with `npm run add-course -- <course>`.
+### 6. Hand out the token
 
-If the lab repo is **private to the class**, put the token directly in
-`settings.json` instead of `{env:TUTOR_TOKEN}`:
+Give students that course's token, and point them at
+[For students](#for-students). It is shared across the class; rotate it each
+semester with `npm run add-course -- <course>`, which prints the new token once and
+stores only its hash.
 
-```json
-"Authorization": "Bearer PASTE-THE-TOKEN-add-course-PRINTED"
+Because `install_tutor()` takes the token as an argument and writes it to the
+student's own machine, it never has to live in the lab repo — public or private —
+and never becomes an environment variable a student has to manage. If you changed
+the `url` default in `install.R` to your own server, the line students run is just:
+
+```r
+install_tutor(token = "...", student = "<their-github-username>")
 ```
-
-Students then set only `TUTOR_STUDENT` — one variable instead of two, which removes
-the most common support ticket. Rotation also gets easier: edit one line, commit,
-and students pick it up on their next pull.
-
-**Do not do this if the lab repo is public.** Keep `{env:TUTOR_TOKEN}` there.
 
 ---
 
@@ -194,67 +319,6 @@ write to a course that does not exist, which makes that mistake hard to make.
 
 Each course gets its own lab repo, its own `settings.json`, and its own token. The
 dashboard can be filtered by course.
-
----
-
-## Student setup
-
-One line in the R console, using the class token the instructor handed out:
-
-```r
-source("https://raw.githubusercontent.com/benrosche/socratic-tutor/master/install.R")
-
-install_tutor(
-  token   = "<the token your instructor gave you>",
-  student = "<your GitHub username>",
-  url     = "https://<your-course-server>.up.railway.app"
-)
-```
-
-Then restart Positron. `uninstall_tutor()` reverses it.
-
-This writes to the **user-level** Posit Assistant config, so it works regardless of
-where a student keeps their notebooks:
-
-```
-<home>/.posit/assistant/skills/tutor/SKILL.md   the tutor's instructions
-<home>/.posit/assistant/settings.json           gains an mcpServers entry
-```
-
-Existing settings are merged, not overwritten, and backed up first.
-
-> **Why an installer rather than committing `settings.json`?** The token must not
-> live in a public course repo, and a project-level config only works if students
-> open the repo as their project. Writing user-level config sidesteps both. It also
-> means the token never becomes an environment variable students have to manage.
-
-`install.R` contains no secrets — the token is supplied at install time and only
-ever written to the student's own machine, so the installer is safe to host in a
-public repo.
-
-Then, in a notebook with a `#| task:` marker, select **Tutor** from the dropdown at
-the bottom of the chat pane and ask away:
-
-> My ERGM won't converge — what am I doing wrong?
-
-Or use `/tutor <question>` for a one-off without switching modes.
-
-### Checking the connection
-
-Ask the tutor directly:
-
-> `/tutor are you connected?`
-
-It calls `check_connection` and reports whether the server is reachable, **which
-username the server sees for you** (the fastest way to catch a typo'd
-`TUTOR_STUDENT`), how many tasks are loaded, and your request count in the current
-rate-limit window.
-
-If the tutor answers that it is running *without* a server connection, that is a
-real answer, not a failure to try: the skill instructs it to say so plainly rather
-than claim a connection it cannot verify. Hints still work — they are just based on
-your code alone, with no reference solution and no memory of how often you have
-asked.
 
 ---
 
@@ -298,8 +362,35 @@ A ready-to-edit starter notebook lives at
 ## The dashboard
 
 [`dashboard/dashboard.qmd`](dashboard/dashboard.qmd) renders locally against the
-database. Set `TUTOR_DATABASE_URL` in `~/.Renviron` to the Railway **public**
-connection string, then render it.
+database. Once:
+
+```r
+install.packages(c("DBI", "RPostgres", "dplyr", "ggplot2", "knitr"))
+```
+
+Put the Railway **public** connection string in `~/.Renviron` (`usethis::edit_r_environ()`):
+
+```
+TUTOR_DATABASE_URL=postgresql://postgres:PASSWORD@HOST.proxy.rlwy.net:PORT/railway
+```
+
+It must be the **public proxy** host, not `*.railway.internal` — the internal
+hostname only resolves inside Railway. If the Postgres service has no public
+endpoint yet, create one: **Settings → Networking → TCP Proxy** on port `5432`, or
+`railway tcp-proxy create -s Postgres --port 5432`.
+
+Then render:
+
+```bash
+quarto render dashboard/dashboard.qmd
+```
+
+Set `TUTOR_COURSE` to focus a single class; leave it unset to see every course in
+one report:
+
+```bash
+TUTOR_COURSE=sna-2026-fall quarto render dashboard/dashboard.qmd
+```
 
 It answers:
 
@@ -374,16 +465,21 @@ Start with `/tutor are you connected?` — it distinguishes "no server", "server
 but no content loaded", and "server up but database down", which need different
 fixes.
 
+These are the instructor-side failures. Student-side ones are in
+[If something is wrong](#if-something-is-wrong) above — point students there.
+
 | Symptom | Cause |
 |---|---|
-| Tutor says it has no server connection | The MCP server isn't configured or reachable. Check `settings.json` has your real Railway URL, and that both env vars are set. |
+| A student's tutor has no server connection | Have them run `tutor_check()` in the R console. It separates a bad token, an unreachable server, and a config that was never installed. |
+| Tutor has no connection but `tutor_check()` succeeds | Positron was reloaded rather than fully quit. It reads `mcpServers` at startup. |
+| Skill loads and tutors, but no tools are available | `mcpServers` is missing from `<home>/.posit/assistant/settings.json`. A workspace-level `.posit/assistant/settings.json` supplies **skills** but not MCP servers — students must run `install.R`. |
 | `check_connection` reports 0 tasks loaded | Server and database are fine; you haven't run `npm run load` yet. |
 | `check_connection` reports `database: unreachable` | The service is up but `DATABASE_URL` is wrong or Postgres is down. |
-| `student_seen_by_server` is not your username | Typo in `TUTOR_STUDENT`. Fix it and restart Positron, or your history splits across two identities. |
-| `401 unauthorized` | `TUTOR_TOKEN` missing or wrong. Set it in `~/.Renviron` and restart Positron. |
-| `400 missing_student` | `TUTOR_STUDENT` not set. |
-| `400 invalid_student` | The value isn't a valid GitHub username (letters, digits, hyphens). |
-| Tutor says the task is unknown | The `#| task:` ID has no match. The error lists known IDs in that notebook. |
+| `student_seen_by_server` is not the expected username | They installed with a typo. Re-run `install_tutor()`, or their history splits across two identities. |
+| `401 unauthorized` | Wrong class token. Re-issue with `npm run add-course -- <course>` if you have lost it — it only stores the hash. |
+| `400 missing_student` / `400 invalid_student` | The username is absent or isn't a valid GitHub username (letters, digits, hyphens). |
+| Tutor says the task is unknown | The `#| task:` ID has no match. The error lists known IDs in that notebook. Run `npm run verify` to find every marker in this state at once, rather than discovering them one lab at a time. |
+| Dashboard fails with `connection refused` on `127.0.0.1:5432` | `TUTOR_DATABASE_URL` is unset, or points at `*.railway.internal`. Use the public proxy host. |
 | `/healthz` returns 503 | The service is up but cannot reach Postgres. Check `DATABASE_URL`. |
 | Tutor works but gives generic hints | The tool call is probably failing. The skill degrades to code-only tutoring by design; check the server logs. |
 | Slow first response of the day | Railway cold start. Check whether your plan keeps the service warm. |
@@ -403,10 +499,10 @@ cd server
 DATABASE_URL=postgresql://postgres:test@127.0.0.1:5433/tutor_test npm test
 ```
 
-21 tests covering auth and identity handling, the connection diagnostic, solution
-lookup, escalation (including that it increments across *independent* requests —
-the "student opened a fresh chat" case), event logging, and per-student rate
-limiting.
+45 tests: 14 over the Quarto parser (no database needed) and 31 covering auth and
+identity handling, the connection diagnostic, solution lookup, escalation
+(including that it increments across *independent* requests — the "student opened a
+fresh chat" case), event logging, per-student rate limiting, and course isolation.
 
 The suite `TRUNCATE`s its tables, so it refuses to run unless the database name
 contains `test`. Point it at your Railway database and it aborts with the password

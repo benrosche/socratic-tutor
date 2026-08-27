@@ -13,21 +13,37 @@ you what you are missing, ask you a question, and nudge you one step further.
 
 ## One-time setup
 
-Add two lines to your `~/.Renviron` file (create it if it doesn't exist), then
-**restart Positron**:
-
-```
-TUTOR_TOKEN=[the token your instructor gave you]
-TUTOR_STUDENT=[your GitHub username]
-```
-
-In Positron you can open the file with:
+Run this in the R console. It loads the installer and prints what to do next:
 
 ```r
-usethis::edit_r_environ()
+source("https://raw.githubusercontent.com/benrosche/socratic-tutor/master/install.R")
 ```
 
-That's it. Nothing to install.
+Then, with the class token [INSTRUCTOR] gave you:
+
+```r
+install_tutor(
+  token   = "[the token your instructor gave you]",
+  student = "[your GitHub username]"
+)
+```
+
+It will tell you whether it worked:
+
+```
+  Connected to the course server.
+    course        : [YOUR COURSE]
+    it sees you as: [your username]
+    exercises     : [N] loaded
+```
+
+If it says anything else, the tutor will not work and restarting will not fix it —
+sort out what it reports first, or ask [INSTRUCTOR].
+
+Finally, **quit Positron completely** — every window, not a reload — and reopen it.
+
+To check later, run `tutor_check()` in the console. To remove it,
+`uninstall_tutor()`.
 
 ---
 
@@ -68,8 +84,8 @@ Ask it:
 > `/tutor are you connected?`
 
 It will tell you whether it can reach the course server, **which username it sees
-for you**, and how many exercises are loaded. If the username is wrong, fix
-`TUTOR_STUDENT` and restart Positron.
+for you**, and how many exercises are loaded. If the username is wrong, re-run
+`install_tutor()` with the right one and restart Positron.
 
 If it says it has no server connection, it will still help you — just without
 checking your work against the reference solution. Tell [INSTRUCTOR] if that
@@ -82,7 +98,7 @@ happens.
 Every time you ask the tutor for help, the following is stored in the course
 database:
 
-- The GitHub username you set in `TUTOR_STUDENT`
+- The GitHub username you gave to `install_tutor()`
 - Which task you asked about, and how many times you've asked about it
 - **The text of your question, exactly as you typed it**
 - The time
@@ -98,9 +114,15 @@ office hours or on [FORUM].
 
 ## If it stops working
 
+First run `tutor_check()` in the R console — it tests the connection directly and
+says which part is broken.
+
 | What you see | Fix |
 |---|---|
-| "Missing or invalid class token" | Check `TUTOR_TOKEN` in `~/.Renviron`, then restart Positron. |
-| "No student identifier" | Set `TUTOR_STUDENT` to your GitHub username, then restart Positron. |
-| Tutor doesn't know your task | Check the `#| task:` marker matches the exercise you're on. |
-| Vague, generic hints | The tutor probably can't reach the server. Tell [INSTRUCTOR]. |
+| Sourcing the installer printed only "loaded" | That's correct. It just defines the commands — you still have to run `install_tutor(...)`. |
+| "the server rejected the class token" | Wrong token. Ask [INSTRUCTOR]. |
+| Tutor says no connection, but `tutor_check()` works | You reloaded instead of fully quitting Positron. Close every window and reopen. |
+| Tutor says no connection, and `tutor_check()` says "not installed yet" | Run `install_tutor(...)` — sourcing alone doesn't install. |
+| Wrong username reported | Re-run `install_tutor()` with the right one, then restart. |
+| Tutor doesn't know your exercise | The `#\| task:` marker has no solution behind it. Tell [INSTRUCTOR] — you can't fix this one. |
+| Vague, generic hints | It probably can't reach the server. Ask `/tutor are you connected?`. |

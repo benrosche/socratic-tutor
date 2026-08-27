@@ -3,6 +3,58 @@
 All notable changes to the Socratic Tutor are documented in this file. Format
 inspired by [Keep a Changelog](http://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+
+- **`npm run verify`** (`server/src/verify.ts`). Compares the `#| task:` markers in
+  the notebooks students open against the `tasks` rows loaded for a course, and
+  exits non-zero listing any marker with no solution behind it. This is the one
+  failure a clean `npm run load` cannot detect: the loader only sees the solutions
+  repo, so it cannot know an exercise exists that nothing answers. Because task IDs
+  derive from the solution notebook's filename, a renamed lab breaks the link while
+  both sides still look correct on their own.
+
+- **`tutor_check()`** in `install.R`, and `install_tutor()` now ends by calling it.
+  Writing a config file always "succeeds", so the old installer reported success
+  whether or not the tutor could reach anything. It now calls the course server and
+  reports the course, the identity the server sees, and how many exercises are
+  loaded — distinguishing a wrong token (401), an unreachable server, and a course
+  with nothing loaded yet. Students can re-run `tutor_check()` at any time without
+  retyping the token. Verification needs `curl`; without it the install still
+  completes and says the check was skipped.
+
+### Fixed
+
+- **Sourcing `install.R` printed nothing**, which reads exactly like a failed
+  install — the file only defines functions. It now prints what to run next.
+- **The dashboard could never connect.** `dashboard.qmd` passed the whole
+  `postgresql://…` URL as `dbname` on the belief that libpq would expand it.
+  RPostgres does not, so it was read as a literal database name and the connection
+  silently fell back to `localhost:5432`, failing with a `connection refused` that
+  pointed nowhere near the cause. The URL is now split into host/port/user/password.
+  `bigint = "integer"` was added at the same time, so a SQL `count(*)` prints as
+  `54` rather than `2.667954e-322`.
+
+### Changed
+
+- **README and TUTORIAL now separate the two audiences.** The README opens with a
+  two-row table sending students and instructors to different halves, and the
+  student half is first and self-contained — setup, use, its own troubleshooting
+  table, and the disclosure. TUTORIAL says up front that it is written for
+  instructors and links students elsewhere.
+- **Corrected the claim that students install nothing.** They run `install.R`; a
+  workspace `.posit/` supplies skills but not MCP servers, so a lab repo alone
+  produces a tutor that loads, tutors and never connects. The lab-repo template
+  README no longer tells students to set `TUTOR_TOKEN` and `TUTOR_STUDENT` in
+  `~/.Renviron`, which never reached the process that reads them.
+- Test count corrected to 45 (the README said 21, this file said 43).
+- The tutorial's deploy step omitted `npm run add-course` and the now-mandatory
+  `--course` flag on `npm run load`, so following it verbatim exited with an error.
+- The dashboard section of the README said only "set `TUTOR_DATABASE_URL` … then
+  render it". It now covers the R packages, how to get a public endpoint for the
+  Postgres service, the `quarto render` invocation, and `TUTOR_COURSE`.
+
 ## [0.2.0] — 2026-08-27
 
 Rearchitected for **Positron / Posit Assistant**. Positron replaced Positron
@@ -37,7 +89,7 @@ notebook format unchanged.
   need different fixes: no server, no content loaded, database down. The skill is
   instructed to say plainly when the tool is unavailable rather than claim a
   connection it cannot verify.
-- **Test suite** (`npm test`) — 43 tests over the Quarto parser plus auth, identity
+- **Test suite** (`npm test`) — 45 tests over the Quarto parser plus auth, identity
   normalization, the diagnostic, solution lookup, escalation across independent
   requests, event logging, per-student rate limiting, and course isolation. Runs against a real
   Postgres, and refuses to run unless the database name contains `test`, since it

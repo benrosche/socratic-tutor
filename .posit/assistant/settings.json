@@ -1,0 +1,7 @@
+{
+  "permission": {
+    "mcp__tutor__check_connection": {
+      "*": "allow"
+    }
+  }
+}
