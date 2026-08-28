@@ -2,11 +2,12 @@
  * A read-only web view of the request log, served by the same service that
  * answers the tutor.
  *
- * This is the at-a-glance view: what the class is asking about right now,
- * queried live on every request. `dashboard/dashboard.qmd` remains the deep-dive
- * tool — it has the full R toolkit and can be taken further than a served page
- * should. Keep this one small rather than growing it into a second copy of that
- * report; where they overlap, the .qmd is the reference.
+ * Queried live on every request, so there is nothing to render and nothing to go
+ * stale. This replaced a Quarto report that computed the same six panels from the
+ * same two tables; keeping both meant maintaining two implementations of one
+ * analysis, and the served one was strictly more current. For anything this does
+ * not cover, query `events` and `tasks` directly rather than adding panels here
+ * until it becomes that report again.
  *
  * Everything here is rendered server-side into one self-contained page. No
  * client-side JS, no external assets: the page carries student questions, so the
@@ -182,6 +183,15 @@ export async function renderDashboard(req: Request, res: Response): Promise<void
     for (const e of events.filter((x) => !x.found)) missing.set(e.task_id, (missing.get(e.task_id) ?? 0) + 1);
     const missingRows = [...missing.entries()].sort((a, b) => b[1] - a[1]);
 
+    // --- silent exercises -------------------------------------------------
+    // Loaded, but nobody has ever asked. Ambiguous by design — either everyone
+    // got it or nobody attempted it — so it is listed, not charted.
+    const { rows: allTasks } = await getPool().query<{ course: string; task_id: string; title: string | null }>(
+        `select course, task_id, title from tasks ${course ? 'where course = $1' : ''} order by course, task_id`,
+        params
+    );
+    const silent = allTasks.filter((t) => !perTask.has(t.task_id));
+
     const fmt = (d: Date) =>
         d.toISOString().slice(0, 16).replace('T', ' ');
 
@@ -224,6 +234,13 @@ export async function renderDashboard(req: Request, res: Response): Promise<void
            </tr>`).join('')}
          </table></div>
          ${events.length > 100 ? `<p class="blurb">Showing the 100 most recent of ${events.length}.</p>` : ''}`)}
+
+      ${panel('Exercises nobody asks about', 'Loaded, but never asked about. Ambiguous by design: either everyone got it, or nobody attempted it. Worth pairing with submission data before drawing a conclusion.',
+        silent.length
+            ? `<div class="scroll"><table><tr><th>exercise</th><th>title</th></tr>${silent
+                .map((t) => `<tr><td>${esc(t.task_id)}</td><td>${esc(t.title ?? '')}</td></tr>`).join('')}</table></div>
+               <p class="blurb">${silent.length} of ${allTasks.length} loaded exercises.</p>`
+            : '<p class="empty">Every loaded exercise has been asked about at least once.</p>')}
     `;
 
     res.status(200).type('html').send(page(label, nav, body, courses.reduce((n, c) => n + c.tasks, 0)));
@@ -247,8 +264,8 @@ ${body}
   <em>asking</em>, not struggling: an exercise with no requests may mean everyone
   understood it or that nobody attempted it. With a small class most cells are thin —
   read the top few as signal and the rest as noise.
-  <br><br>Live from the database on every load. The deeper report is
-  <code>dashboard/dashboard.qmd</code>, rendered locally.
+  <br><br>Live from the database on every load. For anything deeper, query the
+  <code>events</code> and <code>tasks</code> tables directly — see the README.
 </footer>
 </div></body></html>`;
 }

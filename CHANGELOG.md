@@ -23,10 +23,9 @@ inspired by [Keep a Changelog](http://keepachangelog.com/).
   student's questions verbatim under their username. The class token is rejected
   there, and an unset password yields 503 rather than an open page.
 
-  It adds one panel the Quarto report does not have — **lookups that found no
-  solution**, i.e. students hitting a `#| task:` marker with nothing behind it,
-  which is an instructor bug rather than a class signal. `dashboard/dashboard.qmd`
-  remains the deep-dive tool and the reference where the two overlap.
+  It carries every panel the Quarto report had, plus one it did not: **lookups that
+  found no solution**, i.e. students hitting a `#| task:` marker with nothing behind
+  it, which is an instructor bug rather than a class signal.
 
 - **`tutor_check()`** in `install.R`, and `install_tutor()` now ends by calling it.
   Writing a config file always "succeeds", so the old installer reported success
@@ -65,13 +64,21 @@ inspired by [Keep a Changelog](http://keepachangelog.com/).
   see the reference solution — vaguer hints with no error to explain them. Covered
   now in the README, the lab-repo template, the tutorial, and `install_tutor()`'s
   own closing message.
-- **The dashboard could never connect.** `dashboard.qmd` passed the whole
-  `postgresql://…` URL as `dbname` on the belief that libpq would expand it.
-  RPostgres does not, so it was read as a literal database name and the connection
-  silently fell back to `localhost:5432`, failing with a `connection refused` that
-  pointed nowhere near the cause. The URL is now split into host/port/user/password.
-  `bigint = "integer"` was added at the same time, so a SQL `count(*)` prints as
-  `54` rather than `2.667954e-322`.
+### Removed
+
+- **`dashboard/dashboard.qmd`.** The hosted `/dashboard` computes the same panels
+  from the same two tables and is always current, where a rendered report is only as
+  fresh as the last time you remembered to render it. Keeping both meant maintaining
+  two implementations of one analysis. The README now shows how to connect to the
+  database directly for anything the page does not answer — including the RPostgres
+  connection recipe, which is the one genuinely fiddly part.
+
+  Worth recording, since it is a trap for anyone writing that recipe again: the
+  report could never actually connect. It passed the whole `postgresql://…` URL as
+  `dbname` on the belief that libpq would expand it. RPostgres does not — it reads
+  it as a literal database name and falls back to `localhost:5432`, failing with a
+  `connection refused` that points nowhere near the cause. `bigint = "integer"`
+  matters too, or a SQL `count(*)` prints as `2.667954e-322` rather than `54`.
 
 ### Changed
 
@@ -89,8 +96,8 @@ inspired by [Keep a Changelog](http://keepachangelog.com/).
 - The tutorial's deploy step omitted `npm run add-course` and the now-mandatory
   `--course` flag on `npm run load`, so following it verbatim exited with an error.
 - The dashboard section of the README said only "set `TUTOR_DATABASE_URL` … then
-  render it". It now covers the R packages, how to get a public endpoint for the
-  Postgres service, the `quarto render` invocation, and `TUTOR_COURSE`.
+  render it". It now documents the hosted page, and how to reach the database
+  directly — including getting a public endpoint for the Postgres service.
 
 ## [0.2.0] — 2026-08-27
 

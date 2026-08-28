@@ -7,8 +7,8 @@ out/
 .env
 .Renviron
 
-# The rendered dashboard embeds student usernames and question text. This is a
-# public repo — keep the output local.
-dashboard/dashboard.html
-dashboard/dashboard_files/
-dashboard/*_files/
+# Any local analysis of the request log embeds student usernames and question
+# text. This is a public repo — keep that output out of it.
+dashboard/
+*_files/
+scratch/

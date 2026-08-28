@@ -31,11 +31,13 @@ need a Railway account and a repo of reference solutions.
 socratic-tutor-solutions   (private repo)     .qmd notebooks with Solution callouts
         │  npm run load  — run locally, on demand
         ▼
-   Railway Postgres  ── tasks | events ──►  dashboard.qmd  (rendered locally)
+   Railway Postgres  ── tasks | events ──┐
+        ▲                                │
+        │                                ▼
+   Railway service: MCP server  ──►  /dashboard  (instructor, password-protected)
         ▲
-        │
-   Railway service: MCP server  ◄── https ──  Positron / Posit Assistant
-                                              tutor skill + Tutor agent
+        │  https
+   Positron / Posit Assistant — tutor skill + Tutor agent
 ```
 
 1. A student writes code in a Quarto notebook with a task marker like `#| task: r-lab-1`.
@@ -392,13 +394,9 @@ A ready-to-edit starter notebook lives at
 
 ## The dashboard
 
-There are two views of the same request log, for two different jobs.
-
-### Hosted — `/dashboard`
-
-The deployed server serves a live page at `https://<your-app>.up.railway.app/dashboard`.
+The deployed server serves it live at `https://<your-app>.up.railway.app/dashboard`.
 It queries Postgres on every load, so it is never stale and there is nothing to
-render. Use it to glance at where the class is during a lab.
+render, install, or configure beyond one password.
 
 Enable it by setting one service variable:
 
@@ -426,64 +424,56 @@ class's: those are students hitting a `#| task:` marker with nothing behind it. 
 [`npm run verify`](#4-check-that-every-exercise-has-a-solution) to see the whole set,
 including the ones nobody has hit yet.
 
-### Local — `dashboard.qmd`
+### Going deeper
 
-[`dashboard/dashboard.qmd`](dashboard/dashboard.qmd) renders locally against the
-same database and goes deeper — it has the full R toolkit, and can be taken further
-than a served page should be. **Where the two overlap, this one is the reference.**
-If you want another panel, it probably belongs here rather than on the hosted page.
+Through v0.2 this repo also carried `dashboard/dashboard.qmd`, a Quarto report
+computing the same panels from the same two tables. It was removed: two
+implementations of one analysis, and the served one is always current while the
+rendered one is only as fresh as the last time you remembered to render it. It is
+still in the git history if you want it back.
 
-Once:
+For anything the page does not answer, query the database directly rather than
+rebuilding a report. Two tables: `events` (one row per request) and `tasks`. From R:
 
 ```r
-install.packages(c("DBI", "RPostgres", "dplyr", "ggplot2", "knitr"))
-```
+install.packages(c("DBI", "RPostgres"))
 
-Put the Railway **public** connection string in `~/.Renviron` (`usethis::edit_r_environ()`):
+# The Railway *public* connection string, in ~/.Renviron via usethis::edit_r_environ():
+#   TUTOR_DATABASE_URL=postgresql://postgres:PASSWORD@HOST.proxy.rlwy.net:PORT/railway
+url <- Sys.getenv("TUTOR_DATABASE_URL")
 
-```
-TUTOR_DATABASE_URL=postgresql://postgres:PASSWORD@HOST.proxy.rlwy.net:PORT/railway
+# RPostgres does NOT expand a connection URI passed as `dbname` — it reads it as a
+# literal database name and falls back to localhost, failing with a confusing
+# "connection refused on 127.0.0.1:5432". Split it yourself.
+p <- regmatches(url, regexec(
+  "^postgres(?:ql)?://([^:/@]+)(?::([^@]*))?@([^:/?]+)(?::([0-9]+))?/([^?]+)", url))[[1]]
+
+con <- DBI::dbConnect(
+  RPostgres::Postgres(),
+  host = p[4], port = as.integer(p[5]), dbname = p[6],
+  user = p[2], password = p[3],
+  sslmode = "require",
+  bigint = "integer"   # or a SQL count(*) comes back as integer64 and prints as garbage
+)
+
+events <- DBI::dbGetQuery(con, "select * from events where course = 'sna-2026-fall'")
 ```
 
 It must be the **public proxy** host, not `*.railway.internal` — the internal
 hostname only resolves inside Railway. If the Postgres service has no public
 endpoint yet, create one: **Settings → Networking → TCP Proxy** on port `5432`, or
-`railway tcp-proxy create -s Postgres --port 5432`.
+`railway tcp-proxy create -s Postgres --port 5432`. The same endpoint is what
+`npm run load`, `npm run verify` and `npm run migrate` use.
 
-Then render:
+Anything you render from this locally embeds usernames and question text. `dashboard/`
+is gitignored for that reason; keep it that way.
 
-```bash
-quarto render dashboard/dashboard.qmd
-```
+### Two caveats
 
-Set `TUTOR_COURSE` to focus a single class; leave it unset to see every course in
-one report:
-
-```bash
-TUTOR_COURSE=sna-2026-fall quarto render dashboard/dashboard.qmd
-```
-
-It answers:
-
-- Which tasks generate the most requests.
-- **Which tasks leave students genuinely stuck** — the share reaching level 3+,
-  which separates a quick clarification from real confusion. This is the metric v0.1
-  could not produce.
-- Whether requests are concentrated in a few students or spread across the class.
-- When the work actually happens.
-- **What students typed, verbatim.**
-
-The rendered `dashboard.html` is gitignored. It embeds usernames and question text,
-so keep it local.
-
-### Both views, two caveats
-
-They measure *asking*, not struggling: a task with zero requests may mean everyone
+It measures *asking*, not struggling: a task with zero requests may mean everyone
 understood it or that nobody attempted it. And with a class of thirty across forty
 tasks, most cells are thin — treat the top few tasks as signal and the rest as
-noise. Neither view is evidence for a grade.
-
-The rendered HTML contains student data and is gitignored. Keep it local.
+noise. None of it is evidence for a grade.
 
 ---
 
