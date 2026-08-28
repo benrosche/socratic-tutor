@@ -15,6 +15,19 @@ inspired by [Keep a Changelog](http://keepachangelog.com/).
   derive from the solution notebook's filename, a renamed lab breaks the link while
   both sides still look correct on their own.
 
+- **Hosted instructor dashboard** at `/dashboard` on the deployed service
+  (`server/src/dashboard.ts`). Queries Postgres on every request, so it is live
+  rather than as fresh as the last local render, and needs no rendering step at all.
+  Behind HTTP Basic auth with its own `DASHBOARD_PASSWORD`, which is deliberately
+  **not** the class token: every student holds that, and this page shows every
+  student's questions verbatim under their username. The class token is rejected
+  there, and an unset password yields 503 rather than an open page.
+
+  It adds one panel the Quarto report does not have — **lookups that found no
+  solution**, i.e. students hitting a `#| task:` marker with nothing behind it,
+  which is an instructor bug rather than a class signal. `dashboard/dashboard.qmd`
+  remains the deep-dive tool and the reference where the two overlap.
+
 - **`tutor_check()`** in `install.R`, and `install_tutor()` now ends by calling it.
   Writing a config file always "succeeds", so the old installer reported success
   whether or not the tutor could reach anything. It now calls the course server and

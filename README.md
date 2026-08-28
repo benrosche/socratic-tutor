@@ -198,6 +198,7 @@ Set these service variables:
 | `DATABASE_URL` | Reference the Postgres add-on (`${{Postgres.DATABASE_URL}}`) |
 | `RATE_LIMIT` | Optional, default `30` requests per window |
 | `RATE_WINDOW_MINUTES` | Optional, default `10` |
+| `DASHBOARD_PASSWORD` | Optional. Enables the hosted dashboard at `/dashboard`. **Not** the class token — see [The dashboard](#the-dashboard) |
 
 Class tokens are **not** environment variables — they live in the database, one per
 course. See step 3.
@@ -391,8 +392,48 @@ A ready-to-edit starter notebook lives at
 
 ## The dashboard
 
+There are two views of the same request log, for two different jobs.
+
+### Hosted — `/dashboard`
+
+The deployed server serves a live page at `https://<your-app>.up.railway.app/dashboard`.
+It queries Postgres on every load, so it is never stale and there is nothing to
+render. Use it to glance at where the class is during a lab.
+
+Enable it by setting one service variable:
+
+```bash
+railway variables -s socratic-tutor --set "DASHBOARD_PASSWORD=<a long random string>"
+```
+
+The page then asks for it over HTTP Basic auth — any username, that password.
+Share it with a TA if you have one; there are no per-user accounts.
+
+> **This must not be your class token.** Every student has that, and this page shows
+> every student's questions verbatim, under their username. It is a separate secret
+> on purpose, and the class token is rejected here. If `DASHBOARD_PASSWORD` is unset
+> the route answers 503 rather than serving openly — an accidentally public page
+> here is a privacy incident, not a bug.
+
+Add `?course=<course>` to filter, or use the links at the top of the page when you
+run several classes. The page is `noindex, nofollow`, carries no client-side
+JavaScript, and escapes question text on the way out.
+
+It shows the most-asked exercises, the share of askers reaching level 3+, who is
+asking, activity by day, the last 100 questions verbatim — and **lookups that found
+no solution**, which is the one panel that reports your bugs rather than the
+class's: those are students hitting a `#| task:` marker with nothing behind it. Run
+[`npm run verify`](#4-check-that-every-exercise-has-a-solution) to see the whole set,
+including the ones nobody has hit yet.
+
+### Local — `dashboard.qmd`
+
 [`dashboard/dashboard.qmd`](dashboard/dashboard.qmd) renders locally against the
-database. Once:
+same database and goes deeper — it has the full R toolkit, and can be taken further
+than a served page should be. **Where the two overlap, this one is the reference.**
+If you want another panel, it probably belongs here rather than on the hosted page.
+
+Once:
 
 ```r
 install.packages(c("DBI", "RPostgres", "dplyr", "ggplot2", "knitr"))
@@ -432,10 +473,15 @@ It answers:
 - When the work actually happens.
 - **What students typed, verbatim.**
 
-Two caveats worth keeping in mind. It measures *asking*, not struggling: a task with
-zero requests may mean everyone understood it or that nobody attempted it. And with
-a class of thirty across forty tasks, most cells are thin — treat the top few tasks
-as signal and the rest as noise.
+The rendered `dashboard.html` is gitignored. It embeds usernames and question text,
+so keep it local.
+
+### Both views, two caveats
+
+They measure *asking*, not struggling: a task with zero requests may mean everyone
+understood it or that nobody attempted it. And with a class of thirty across forty
+tasks, most cells are thin — treat the top few tasks as signal and the rest as
+noise. Neither view is evidence for a grade.
 
 The rendered HTML contains student data and is gitignored. Keep it local.
 
@@ -458,10 +504,14 @@ lab repo's own README, that their questions are recorded and by whom they are re
 Decide and state a retention period — deleting the `events` rows at the end of each
 semester is a reasonable default.
 
-`TUTOR_STUDENT` is **self-reported and not authenticated**. It is a label for
-grouping requests, not proof of identity: a student can type someone else's username
-or change their own. Do not use this data for grading or for any decision that
-requires the identity to be reliable.
+The username is **self-reported and not authenticated**. It is a label for grouping
+requests, not proof of identity: a student can pass someone else's username to
+`install_tutor()` or change their own. Do not use this data for grading or for any
+decision that requires the identity to be reliable.
+
+Both dashboards expose this data in full. The hosted one is password-protected with
+a secret students do not have; the rendered `dashboard.html` is gitignored. Keep it
+that way — the data is only as private as the least careful place you put it.
 
 ---
 
@@ -475,7 +525,12 @@ What limits this:
 
 - Per-student rate limiting (`RATE_LIMIT`, default 30 requests per 10 minutes).
 - Rotating each course's token every semester with `npm run add-course`.
-- The dashboard — a student hitting forty tasks in two minutes is conspicuous.
+- The dashboard — a student hitting forty tasks in two minutes is conspicuous, and
+  the hosted view makes that visible without rendering anything.
+
+The dashboard password is a **separate** secret from the class token, and the class
+token is explicitly rejected at `/dashboard`. Do not collapse the two: the whole
+point is that holding the student credential must not reveal what the class asked.
 
 If that trade is wrong for your course, the cheapest hardening is to stop shipping
 working code in the payload: strip fenced code blocks in the loader and keep the
@@ -510,6 +565,8 @@ These are the instructor-side failures. Student-side ones are in
 | `400 missing_student` / `400 invalid_student` | The username is absent or isn't a valid GitHub username (letters, digits, hyphens). |
 | Tutor says the task is unknown | The `#| task:` ID has no match. The error lists known IDs in that notebook. Run `npm run verify` to find every marker in this state at once, rather than discovering them one lab at a time. |
 | Dashboard fails with `connection refused` on `127.0.0.1:5432` | `TUTOR_DATABASE_URL` is unset, or points at `*.railway.internal`. Use the public proxy host. |
+| `/dashboard` returns 503 "Dashboard disabled" | `DASHBOARD_PASSWORD` is not set on the service. This is the safe default, not a fault. |
+| `/dashboard` keeps asking for the password | Any username works; only the password is checked. If you are pasting the class token, that is deliberately rejected. |
 | `/healthz` returns 503 | The service is up but cannot reach Postgres. Check `DATABASE_URL`. |
 | Tutor works but gives generic hints | The tool call is probably failing. The skill degrades to code-only tutoring by design; check the server logs. |
 | Slow first response of the day | Railway cold start. Check whether your plan keeps the service warm. |

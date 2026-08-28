@@ -49,7 +49,9 @@ That is the one thing no purely client-side design can do, and it is most of the
 
 ## Seeing where the class is stuck
 
-Every request is logged: student, task, level, question text, timestamp. A Quarto report renders that into the things you actually want to know.
+Every request is logged: student, task, level, question text, timestamp. There are two views of it. The server hosts a live page at `/dashboard`, password-protected, which you can open mid-lab to see where the room is — it queries the database on each load, so there is nothing to render and nothing to go stale. A Quarto report renders the same data locally and goes deeper.
+
+The password is deliberately not the class token. Every student holds that, and this page shows every student's questions under their username; if the two were the same secret, handing out the student credential would hand out the class's questions. Where the two views overlap, the Quarto report is the reference — the hosted page is meant to stay a glance.
 
 The most useful panel is not "requests per task" but **the share of students who reached level 3 or higher**. A task with many requests but mostly level 1 is producing quick clarifications — probably a wording problem in the prompt. A task where half the class reaches level 3 is a task where people are genuinely stuck, and that is the one to rewrite.
 
@@ -96,7 +98,7 @@ Two requirements, one of which the v0.1 docs got wrong:
 
 ### Step 2 — Deploy
 
-Railway project → add Postgres → add a service from this repo with **Root Directory** `server`. Set `DATABASE_URL` to the Postgres reference. Then from `server/`:
+Railway project → add Postgres → add a service from this repo with **Root Directory** `server`. Set `DATABASE_URL` to the Postgres reference, and `DASHBOARD_PASSWORD` to a long random string if you want the hosted dashboard (any username, that password). Then from `server/`:
 
 ```bash
 npm install
